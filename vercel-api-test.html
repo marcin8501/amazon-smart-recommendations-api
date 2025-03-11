@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vercel API Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            border: 1px solid #ccc;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        textarea {
+            width: 100%;
+            height: 150px;
+            margin-bottom: 10px;
+            font-family: monospace;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        pre {
+            background-color: #f9f9f9;
+            padding: 10px;
+            border-radius: 5px;
+            overflow: auto;
+            max-height: 300px;
+        }
+        .status {
+            margin: 10px 0;
+            font-weight: bold;
+        }
+        .error {
+            color: red;
+        }
+        .success {
+            color: green;
+        }
+    </style>
+</head>
+<body>
+    <h1>Vercel API Test</h1>
+    
+    <div class="container">
+        <h2>API Key Configuration</h2>
+        <p>Enter your Perplexity API key (this will be sent directly to your Vercel function):</p>
+        <input type="text" id="apiKey" placeholder="Enter your Perplexity API key">
+        <button id="saveKey">Save Key for Testing</button>
+        <p><small>This key is only stored in your browser for testing purposes.</small></p>
+    </div>
+    
+    <div class="container">
+        <h2>API URL Configuration</h2>
+        <p>Enter your Vercel function URL:</p>
+        <input type="text" id="apiUrl" placeholder="https://your-project.vercel.app/api/recommendations">
+        <p><small>After deployment, your URL will look something like: https://your-project.vercel.app/api/recommendations</small></p>
+    </div>
+    
+    <div class="container">
+        <h2>Product Data</h2>
+        <textarea id="productData">{
+  "product": {
+    "title": "Sony WH-1000XM4 Wireless Noise Cancelling Headphones",
+    "price": "299.99",
+    "category": "Electronics",
+    "asin": "B0863TXGM3"
+  }
+}</textarea>
+    </div>
+    
+    <div class="container">
+        <h2>Test Vercel Function</h2>
+        <button id="testBtn">Call Vercel Function</button>
+        <div id="status" class="status">Ready to test</div>
+        <h3>Response:</h3>
+        <pre id="result">No response yet</pre>
+    </div>
+    
+    <div class="container" id="recommendationsContainer" style="display: none;">
+        <h2>Formatted Recommendations</h2>
+        <div id="recommendations"></div>
+    </div>
+
+    <script>
+        // Handle API key storage
+        document.getElementById('saveKey').addEventListener('click', () => {
+            const apiKey = document.getElementById('apiKey').value.trim();
+            if (apiKey) {
+                localStorage.setItem('perplexityApiKey', apiKey);
+                alert('API key saved for testing!');
+            } else {
+                alert('Please enter an API key');
+            }
+        });
+
+        // Load saved API key if available
+        document.addEventListener('DOMContentLoaded', () => {
+            const savedKey = localStorage.getItem('perplexityApiKey');
+            if (savedKey) {
+                document.getElementById('apiKey').value = savedKey;
+            }
+        });
+        
+        // Test function
+        document.getElementById('testBtn').addEventListener('click', async () => {
+            const statusElem = document.getElementById('status');
+            const resultElem = document.getElementById('result');
+            const recommendationsContainer = document.getElementById('recommendationsContainer');
+            const recommendationsElem = document.getElementById('recommendations');
+            
+            const apiUrl = document.getElementById('apiUrl').value.trim();
+            if (!apiUrl) {
+                alert('Please enter your Vercel function URL');
+                return;
+            }
+            
+            try {
+                // Parse product data
+                const data = JSON.parse(document.getElementById('productData').value);
+                
+                // Get API key
+                const apiKey = document.getElementById('apiKey').value.trim();
+                
+                // Update status
+                statusElem.textContent = 'Sending request to Vercel function...';
+                statusElem.className = 'status';
+                resultElem.textContent = 'Waiting for response...';
+                recommendationsContainer.style.display = 'none';
+                
+                // Add API key to request if provided
+                if (apiKey) {
+                    data.apiKey = apiKey;
+                }
+                
+                // Track timing
+                const startTime = new Date().getTime();
+                
+                // Make the API call
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(data)
+                });
+                
+                const endTime = new Date().getTime();
+                const duration = (endTime - startTime) / 1000;
+                
+                // Get response data
+                const responseData = await response.json();
+                
+                // Update UI
+                if (response.ok) {
+                    statusElem.textContent = `Success! Response received in ${duration}s`;
+                    statusElem.className = 'status success';
+                    resultElem.textContent = JSON.stringify(responseData, null, 2);
+                    
+                    // Format recommendations if available
+                    if (responseData.choices && responseData.choices[0] && responseData.choices[0].message && responseData.choices[0].message.content) {
+                        recommendationsContainer.style.display = 'block';
+                        const content = responseData.choices[0].message.content;
+                        recommendationsElem.innerHTML = formatRecommendations(content);
+                    }
+                } else {
+                    statusElem.textContent = `Error: ${response.status} - ${response.statusText}`;
+                    statusElem.className = 'status error';
+                    resultElem.textContent = JSON.stringify(responseData, null, 2);
+                }
+            } catch (error) {
+                statusElem.textContent = `Error: ${error.message}`;
+                statusElem.className = 'status error';
+                resultElem.textContent = error.toString();
+            }
+        });
+        
+        // Format recommendations for better display
+        function formatRecommendations(text) {
+            return text
+                .replace(/\n/g, '<br>')
+                .replace(/(\d+\.\s.*?)(?=\n|$)/g, '<strong>$1</strong>')
+                .replace(/Price:\s([^<]+)/g, '<span style="color: #B12704;">Price: $1</span>')
+                .replace(/Why it's better:\s([^<]+)/g, '<span style="color: #007600;">Why it\'s better: $1</span>');
+        }
+    </script>
+</body>
+</html> 

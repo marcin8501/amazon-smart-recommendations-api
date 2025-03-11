@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vercel API Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            border: 1px solid #ccc;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        textarea {
+            width: 100%;
+            height: 150px;
+            margin-bottom: 10px;
+            font-family: monospace;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        pre {
+            background-color: #f9f9f9;
+            padding: 10px;
+            border-radius: 5px;
+            overflow: auto;
+            max-height: 300px;
+        }
+        .status {
+            margin: 10px 0;
+            font-weight: bold;
+        }
+        .error {
+            color: red;
+        }
+        .success {
+            color: green;
+        }
+    </style>
+</head>
+<body>
+    <h1>Vercel API Test</h1>
+    
+    <div class="container">
+        <h2>Configuration</h2>
+        <p>Enter your Vercel API endpoint URL:</p>
+        <input type="text" id="apiUrl" placeholder="https://your-vercel-app.vercel.app/api/recommendations">
+    </div>
+    
+    <div class="container">
+        <h2>Test Hello Function</h2>
+        <p>Test the simple hello function to verify your Vercel deployment is working:</p>
+        <button id="testHello">Test Hello Function</button>
+        <div id="helloStatus" class="status">Ready to test</div>
+        <pre id="helloResponse">No response yet</pre>
+    </div>
+    
+    <div class="container">
+        <h2>Test Recommendations Function</h2>
+        <p>Product information to get recommendations for:</p>
+        <textarea id="productData">{
+  "product": {
+    "title": "Sony WH-1000XM4 Noise Cancelling Headphones",
+    "price": "299.99",
+    "category": "Electronics",
+    "asin": "B0863TXGM3"
+  }
+}</textarea>
+        <button id="testRecommendations">Test Recommendations Function</button>
+        <div id="recommendationsStatus" class="status">Ready to test</div>
+        <pre id="recommendationsResponse">No response yet</pre>
+    </div>
+    
+    <div class="container" id="formattedContainer" style="display: none;">
+        <h2>Formatted Recommendations</h2>
+        <div id="formattedRecommendations"></div>
+    </div>
+
+    <script>
+        // Test Hello Function
+        document.getElementById('testHello').addEventListener('click', async function() {
+            const apiUrl = document.getElementById('apiUrl').value.trim();
+            if (!apiUrl) {
+                alert('Please enter your Vercel API endpoint URL');
+                return;
+            }
+            
+            const baseUrl = apiUrl.substring(0, apiUrl.lastIndexOf('/'));
+            const helloUrl = `${baseUrl}/hello`;
+            
+            const statusElem = document.getElementById('helloStatus');
+            const responseElem = document.getElementById('helloResponse');
+            
+            statusElem.textContent = 'Testing Hello function...';
+            statusElem.className = 'status';
+            
+            try {
+                const startTime = new Date().getTime();
+                
+                const response = await fetch(helloUrl, {
+                    method: 'GET'
+                });
+                
+                const endTime = new Date().getTime();
+                const duration = endTime - startTime;
+                
+                const data = await response.text();
+                
+                if (response.ok) {
+                    statusElem.textContent = `Success! Response received in ${duration}ms`;
+                    statusElem.className = 'status success';
+                } else {
+                    statusElem.textContent = `Error: ${response.status} - ${response.statusText}`;
+                    statusElem.className = 'status error';
+                }
+                
+                responseElem.textContent = data;
+            } catch (error) {
+                statusElem.textContent = `Error: ${error.message}`;
+                statusElem.className = 'status error';
+                responseElem.textContent = error.toString();
+            }
+        });
+        
+        // Test Recommendations Function
+        document.getElementById('testRecommendations').addEventListener('click', async function() {
+            const apiUrl = document.getElementById('apiUrl').value.trim();
+            if (!apiUrl) {
+                alert('Please enter your Vercel API endpoint URL');
+                return;
+            }
+            
+            const statusElem = document.getElementById('recommendationsStatus');
+            const responseElem = document.getElementById('recommendationsResponse');
+            const formattedContainer = document.getElementById('formattedContainer');
+            const formattedElem = document.getElementById('formattedRecommendations');
+            
+            statusElem.textContent = 'Testing Recommendations function...';
+            statusElem.className = 'status';
+            formattedContainer.style.display = 'none';
+            
+            try {
+                const productData = JSON.parse(document.getElementById('productData').value);
+                
+                const startTime = new Date().getTime();
+                
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(productData)
+                });
+                
+                const endTime = new Date().getTime();
+                const duration = endTime - startTime;
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    statusElem.textContent = `Success! Response received in ${duration}ms`;
+                    statusElem.className = 'status success';
+                    responseElem.textContent = JSON.stringify(data, null, 2);
+                    
+                    // Format recommendations if available
+                    if (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) {
+                        formattedContainer.style.display = 'block';
+                        formattedElem.innerHTML = formatRecommendations(data.choices[0].message.content);
+                    }
+                } else {
+                    statusElem.textContent = `Error: ${response.status} - ${response.statusText}`;
+                    statusElem.className = 'status error';
+                    responseElem.textContent = JSON.stringify(data, null, 2);
+                }
+            } catch (error) {
+                statusElem.textContent = `Error: ${error.message}`;
+                statusElem.className = 'status error';
+                responseElem.textContent = error.toString();
+            }
+        });
+        
+        // Format recommendations for better display
+        function formatRecommendations(text) {
+            return text
+                .replace(/\n/g, '<br>')
+                .replace(/(\d+\.\s.*?)(?=\n|$)/g, '<strong>$1</strong>')
+                .replace(/Price:\s([^<]+)/g, '<span style="color: #B12704;">Price: $1</span>')
+                .replace(/Why it's better:\s([^<]+)/g, '<span style="color: #007600;">Why it\'s better: $1</span>');
+        }
+    </script>
+</body>
+</html> 

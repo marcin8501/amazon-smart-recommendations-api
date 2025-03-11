@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Perplexity API Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.6; }
+        button { padding: 10px 20px; background: #0072CE; color: white; border: none; cursor: pointer; margin-bottom: 20px; }
+        pre { background: #f4f4f4; padding: 10px; border-radius: 4px; overflow: auto; white-space: pre-wrap; }
+        .product { border: 1px solid #ddd; padding: 15px; margin-bottom: 20px; border-radius: 4px; }
+        .recommendations { margin-top: 30px; }
+        .recommendation { background: #f9f9f9; padding: 15px; margin-bottom: 10px; border-left: 4px solid #0072CE; }
+        .error { color: red; background: #ffeeee; padding: 10px; border-left: 4px solid red; margin-bottom: 20px; }
+        .loading { display: inline-block; width: 20px; height: 20px; border: 3px solid rgba(0,0,0,.3); border-radius: 50%; border-top-color: #0072CE; animation: spin 1s ease-in-out infinite; margin-left: 10px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .status { margin: 10px 0; font-weight: bold; }
+        textarea { width: 100%; height: 100px; margin-bottom: 15px; font-family: monospace; }
+        #apiKey { width: 100%; margin-bottom: 15px; padding: 8px; font-family: monospace; }
+    </style>
+</head>
+<body>
+    <h1>Perplexity API Test</h1>
+    <p>This page will make a direct call to the Perplexity API to test the response.</p>
+    
+    <div>
+        <label for="apiKey">Perplexity API Key:</label>
+        <input type="text" id="apiKey" placeholder="Enter your Perplexity API key">
+    </div>
+    
+    <div class="product">
+        <h2>Product Data to Send</h2>
+        <textarea id="productData">{
+  "title": "Sony WH-1000XM4 Wireless Noise Cancelling Headphones",
+  "price": "299.99",
+  "brand": "Sony",
+  "rating": "4.7",
+  "reviewCount": "34,219",
+  "asin": "B0863TXGM3"
+}</textarea>
+    </div>
+    
+    <div>
+        <button id="callApiBtn">Call Perplexity API</button>
+        <span id="loadingIndicator" class="loading" style="display: none;"></span>
+    </div>
+    
+    <div class="status" id="statusContainer" style="display: none;"></div>
+    
+    <div id="errorContainer" class="error" style="display: none;"></div>
+    
+    <h2>Raw API Response:</h2>
+    <pre id="responseContainer">No response yet. Click "Call Perplexity API" to test.</pre>
+    
+    <div class="recommendations" id="recommendationsContainer" style="display: none;">
+        <h2>Parsed Recommendations</h2>
+        <div id="recommendationsList"></div>
+    </div>
+    
+    <script>
+        document.getElementById('callApiBtn').addEventListener('click', async function() {
+            const apiKey = document.getElementById('apiKey').value.trim();
+            if (!apiKey) {
+                alert('Please enter your Perplexity API key');
+                return;
+            }
+            
+            const loadingIndicator = document.getElementById('loadingIndicator');
+            const statusContainer = document.getElementById('statusContainer');
+            const errorContainer = document.getElementById('errorContainer');
+            const responseContainer = document.getElementById('responseContainer');
+            const recommendationsContainer = document.getElementById('recommendationsContainer');
+            const recommendationsList = document.getElementById('recommendationsList');
+            
+            // Reset UI
+            loadingIndicator.style.display = 'inline-block';
+            errorContainer.style.display = 'none';
+            errorContainer.textContent = '';
+            responseContainer.textContent = 'Fetching...';
+            statusContainer.style.display = 'block';
+            statusContainer.textContent = 'Status: Making request...';
+            recommendationsContainer.style.display = 'none';
+            
+            try {
+                // Get product data from textarea
+                const productData = JSON.parse(document.getElementById('productData').value);
+                
+                // Prepare request body for Perplexity API
+                const requestBody = {
+                  model: "sonar-small-online",
+                  messages: [
+                    { 
+                      role: "system", 
+                      content: `You are a specialized Amazon product recommendation assistant. Your task is to recommend 3 alternative products to the one being viewed, each with distinct advantages:
+                      1. Better Value Alternative: A product with similar features but better price-to-quality ratio
+                      2. Premium Option: A higher-quality alternative with enhanced features
+                      3. Popular Choice: The most highly-rated or bestselling alternative in this category
+                      
+                      For each recommendation, provide:
+                      - A descriptive title (max 50 chars)
+                      - Estimated price (if unknown, make a reasonable estimate)
+                      - A brief explanation of why it's better (1-2 sentences)
+                      - What specific features or aspects make it worth considering` 
+                    },
+                    { 
+                      role: "user", 
+                      content: `I'm looking at this product on Amazon:
+                      
+                      Title: ${productData.title || 'Unknown product'}
+                      Price: $${productData.price || 'Unknown'}
+                      Brand: ${productData.brand || 'Unknown'}
+                      Rating: ${productData.rating || 'Unknown'} stars
+                      Reviews: ${productData.reviewCount || 'Unknown'} reviews
+                      ASIN: ${productData.asin || "Unknown"}
+                      
+                      Please recommend 3 alternative products that shoppers might prefer, following your instructions. Focus on factual information and balanced comparisons.`
+                    }
+                  ],
+                  temperature: 0.2,
+                  max_tokens: 800,
+                  top_p: 0.9
+                };
+                
+                // Make the API call with detailed logging
+                const startTime = new Date();
+                statusContainer.textContent = `Status: Sending request to Perplexity API`;
+                
+                const response = await fetch('https://api.perplexity.ai/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${apiKey}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+                
+                const endTime = new Date();
+                const duration = (endTime - startTime) / 1000;
+                
+                // Log response status
+                statusContainer.textContent = `Status: Received ${response.status} ${response.statusText} in ${duration}s`;
+                
+                // Handle response based on status
+                if (!response.ok) {
+                    errorContainer.style.display = 'block';
+                    errorContainer.textContent = `Error: ${response.status} ${response.statusText}`;
+                    
+                    // Try to get error details if available
+                    try {
+                        const errorText = await response.text();
+                        responseContainer.textContent = errorText;
+                    } catch (textError) {
+                        responseContainer.textContent = 'Could not read error response.';
+                    }
+                    return;
+                }
+                
+                // Parse JSON response
+                const data = await response.json();
+                responseContainer.textContent = JSON.stringify(data, null, 2);
+                
+                // Check if we have valid data
+                if (data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) {
+                    // We have valid data, parse recommendations
+                    recommendationsContainer.style.display = 'block';
+                    
+                    // Parse the recommendations
+                    const content = data.choices[0].message.content;
+                    const recommendationBlocks = content.split(/\d+\.\s+/).filter(block => block.trim());
+                    
+                    recommendationsList.innerHTML = '';
+                    
+                    recommendationBlocks.forEach(block => {
+                        const lines = block.trim().split('\n').filter(line => line.trim());
+                        
+                        // First line is typically the title
+                        const title = lines[0].trim();
+                        
+                        // Extract price using regex
+                        const priceMatch = block.match(/Price:\s+\$([0-9.]+)/);
+                        const price = priceMatch ? priceMatch[1] : "Unknown";
+                        
+                        // Extract the reason (typically after "Why it's better:")
+                        const reasonMatch = block.match(/Why it's better:\s+([^\n]+)/);
+                        const reason = reasonMatch ? reasonMatch[1] : "";
+                        
+                        // Extract features (typically after "Key features:")
+                        const featuresMatch = block.match(/Key features:\s+([^\n]+)/);
+                        const features = featuresMatch ? featuresMatch[1] : "";
+                        
+                        // Create recommendation element
+                        const recommendationEl = document.createElement('div');
+                        recommendationEl.className = 'recommendation';
+                        recommendationEl.innerHTML = `
+                            <h3>${title}</h3>
+                            <p><strong>Price:</strong> $${price}</p>
+                            <p><strong>Why it's better:</strong> ${reason}</p>
+                            <p><strong>Key features:</strong> ${features}</p>
+                        `;
+                        
+                        recommendationsList.appendChild(recommendationEl);
+                    });
+                }
+            } catch (error) {
+                // Handle any JavaScript errors
+                errorContainer.style.display = 'block';
+                errorContainer.textContent = `Error: ${error.message}`;
+                responseContainer.textContent = `JavaScript Error: ${error.message}`;
+                statusContainer.textContent = `Status: Error`;
+            } finally {
+                // Hide loading indicator
+                loadingIndicator.style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html> 

@@ -1,0 +1,530 @@
+/* Base styles */
+:root {
+  --amazon-orange: #FF9900;
+  --amazon-orange-dark: #E47911;
+  --amazon-yellow: #FEBD69;
+  --amazon-yellow-hover: #F5A847; 
+  --amazon-blue: #232F3E;
+  --amazon-blue-light: #37475A;
+  --amazon-link: #007185;
+  --amazon-link-hover: #C7511F;
+  --amazon-text: #0F1111;
+  --amazon-text-secondary: #565959;
+  --amazon-bg: #FFFFFF;
+  --amazon-bg-secondary: #F3F3F3;
+  --amazon-bg-accent: #FAFAFA;
+  --amazon-border: #DDD;
+  --amazon-success: #067D62;
+  --amazon-warning: #C40000;
+  --amazon-badge: #CC0C39;
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 1px 4px 0 rgba(0, 0, 0, 0.1);
+  --border-radius: 0.25rem;
+  --transition: all 0.2s ease-in-out;
+  --panel-width: 360px;
+}
+
+/* Main side panel container */
+#amazon-smart-recommendations {
+  position: fixed;
+  top: 100px;
+  right: 0;
+  width: var(--panel-width);
+  height: calc(100vh - 100px);
+  background-color: var(--amazon-bg);
+  box-shadow: -2px 0 6px rgba(0, 0, 0, 0.1);
+  z-index: 9999;
+  font-family: "Amazon Ember", Arial, sans-serif;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.3s ease-in-out;
+  overflow: hidden;
+  border-left: 1px solid var(--amazon-border);
+}
+
+/* Hidden state - slide out of view */
+#amazon-smart-recommendations.panel-hidden {
+  transform: translateX(var(--panel-width));
+}
+
+/* Visible state */
+#amazon-smart-recommendations.panel-visible {
+  transform: translateX(0);
+}
+
+/* Toggle button */
+#amazon-smart-recommendations .toggle-button {
+  position: fixed;
+  top: 150px;
+  right: var(--panel-width);
+  width: 36px;
+  height: 80px;
+  border-radius: 4px 0 0 4px;
+  background-color: var(--amazon-yellow);
+  color: var(--amazon-blue);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-right: none;
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: var(--transition);
+  z-index: 10000;
+  transform: translateX(0);
+}
+
+/* Toggle button position when panel is hidden */
+#amazon-smart-recommendations.panel-hidden .toggle-button {
+  right: 0;
+}
+
+#amazon-smart-recommendations .toggle-button:hover {
+  background-color: var(--amazon-yellow-hover);
+}
+
+/* Close button */
+.close-button {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: transparent;
+  border: none;
+  font-size: 18px;
+  color: white;
+  cursor: pointer;
+  z-index: 10002;
+  transition: var(--transition);
+}
+
+.close-button:hover {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* Side panel header */
+.panel-header {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--amazon-border);
+  background-color: #1c3146;
+}
+
+.panel-title {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: white;
+  margin: 0;
+}
+
+/* Products container */
+.products-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.75rem;
+  scrollbar-width: thin;
+  scrollbar-color: var(--amazon-border) transparent;
+}
+
+.products-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.products-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.products-container::-webkit-scrollbar-thumb {
+  background-color: var(--amazon-border);
+  border-radius: 3px;
+}
+
+/* Loading state */
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1rem;
+  text-align: center;
+  height: 100%;
+  color: var(--amazon-text-secondary);
+}
+
+.loader {
+  margin-bottom: 1rem;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+}
+
+.spinner .path {
+  stroke: var(--amazon-orange);
+  stroke-linecap: round;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.loading-text {
+  font-size: 0.95rem;
+}
+
+/* Products list */
+.products-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+/* Product card */
+.product-card {
+  display: flex;
+  border: 1px solid var(--amazon-border);
+  border-radius: var(--border-radius);
+  overflow: hidden;
+  background-color: var(--amazon-bg);
+  transition: var(--transition);
+  opacity: 0;
+  transform: translateY(10px);
+  padding: 0.75rem;
+  position: relative;
+  transition: all 0.2s ease-in-out;
+}
+
+.product-card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px) scale(1.01);
+  border-color: var(--amazon-link);
+  background-color: #f9f9ff;
+  z-index: 1;
+}
+
+.product-card.animate-in {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.product-image-container {
+  width: 30%;
+  min-width: 80px;
+}
+
+.product-image {
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+  transition: transform 0.3s ease;
+}
+
+.product-card:hover .product-image {
+  transform: scale(1.05);
+}
+
+.product-details {
+  width: 70%;
+  padding-left: 0.75rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.product-title {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--amazon-link);
+  margin: 0 0 0.25rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.3;
+}
+
+.product-price {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--amazon-text);
+  margin: 0.25rem 0;
+}
+
+.product-actions {
+  margin-top: auto;
+  padding-top: 0.5rem;
+}
+
+.view-button {
+  display: block;
+  background-color: var(--amazon-yellow);
+  color: var(--amazon-text);
+  font-size: 0.875rem;
+  padding: 0.5rem;
+  border-radius: var(--border-radius);
+  text-align: center;
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+  transition: var(--transition);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.4) inset;
+  border: 1px solid #a88734;
+  border-color: #9c7e31 #90742d #786025;
+  width: 100%;
+}
+
+.view-button:hover {
+  background-color: var(--amazon-yellow-hover);
+}
+
+/* Stars and ratings */
+.rating-container {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin: 0.25rem 0;
+}
+
+.stars {
+  display: flex;
+  align-items: center;
+}
+
+.star {
+  width: 16px;
+  height: 16px;
+  fill: var(--amazon-orange);
+}
+
+.star.empty {
+  fill: var(--amazon-border);
+}
+
+.star.half {
+  fill: url(#half-gradient);
+}
+
+.review-count {
+  font-size: 0.85rem;
+  color: var(--amazon-link);
+  margin-left: 0.25rem;
+}
+
+/* Empty state */
+.empty-state,
+.error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1rem;
+  text-align: center;
+  height: 100%;
+}
+
+.empty-icon,
+.error-icon {
+  width: 50px;
+  height: 50px;
+  stroke: var(--amazon-text-secondary);
+  margin-bottom: 1rem;
+}
+
+.empty-state h3,
+.error-state h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--amazon-text);
+  margin: 0 0 0.5rem;
+}
+
+.empty-state p,
+.error-state p {
+  font-size: 0.875rem;
+  color: var(--amazon-text-secondary);
+  margin: 0 0 1.5rem;
+  max-width: 300px;
+}
+
+.retry-button {
+  padding: 0.5rem 1rem;
+  background-color: var(--amazon-yellow);
+  color: var(--amazon-text);
+  border: 1px solid #a88734;
+  border-color: #9c7e31 #90742d #786025;
+  border-radius: var(--border-radius);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.4) inset;
+}
+
+.retry-button:hover {
+  background-color: var(--amazon-yellow-hover);
+}
+
+/* Panel footer */
+.panel-footer {
+  padding: 0.75rem;
+  border-top: 1px solid var(--amazon-border);
+  font-size: 0.75rem;
+  color: var(--amazon-text-secondary);
+  text-align: center;
+  background-color: var(--amazon-bg-secondary);
+}
+
+/* Add an Amazon-like badge to the toggle button */
+#amazon-smart-recommendations .toggle-button::before {
+  content: '';
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 10px;
+  height: 10px;
+  background-color: var(--amazon-badge);
+  border-radius: 50%;
+  display: none;
+}
+
+#amazon-smart-recommendations.has-recommendations .toggle-button::before {
+  display: block;
+}
+
+/* Update the toggle button icon to match Amazon style */
+#amazon-smart-recommendations .toggle-button svg {
+  width: 18px;
+  height: 18px;
+  stroke-width: 2.5;
+}
+
+/* Fix old animation keys that are no longer used */
+@keyframes dash {
+  0% {
+    stroke-dasharray: 1, 150;
+    stroke-dashoffset: 0;
+  }
+  50% {
+    stroke-dasharray: 90, 150;
+    stroke-dashoffset: -35;
+  }
+  100% {
+    stroke-dasharray: 90, 150;
+    stroke-dashoffset: -124;
+  }
+}
+
+/* Animations */
+@keyframes rotate {
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes dash {
+  0% {
+    stroke-dasharray: 1, 150;
+    stroke-dashoffset: 0;
+  }
+  50% {
+    stroke-dasharray: 90, 150;
+    stroke-dashoffset: -35;
+  }
+  100% {
+    stroke-dasharray: 90, 150;
+    stroke-dashoffset: -124;
+  }
+}
+
+/* Prime icon styling */
+.prime-icon {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #002F36;
+  background-color: #E1F2F9;
+  padding: 0.1rem 0.35rem;
+  border-radius: 2px;
+  margin-top: 0.15rem;
+  margin-bottom: 0.5rem;
+  position: relative;
+}
+
+.prime-icon:before {
+  content: '✓';
+  margin-right: 0.15rem;
+  color: var(--amazon-link);
+  font-weight: bold;
+}
+
+/* Recommendation reason */
+.recommendation-reason {
+  font-size: 0.8rem;
+  line-height: 1.3;
+  color: var(--amazon-success);
+  margin: 0.5rem 0;
+  padding: 0.4rem 0;
+  border-top: 1px dotted var(--amazon-border);
+  border-bottom: 1px dotted var(--amazon-border);
+  font-style: italic;
+}
+
+/* Connection status indicator */
+.connection-status {
+  position: absolute;
+  top: 8px;
+  right: 40px;
+  font-size: 14px;
+  cursor: help;
+}
+
+/* Style for the header when disconnected */
+.panel-header.disconnected {
+  position: relative;
+}
+
+.panel-header.disconnected::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.1);
+  pointer-events: none;
+}
+
+/* Product brand and category */
+.product-brand {
+  font-size: 0.8rem;
+  color: var(--amazon-text-secondary);
+  margin-bottom: 0.25rem;
+}
+
+.product-category {
+  font-size: 0.75rem;
+  color: var(--amazon-link);
+  margin: 0.25rem 0;
+}
+
+/* Info state for fallback mode */
+.info-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+  text-align: center;
+  height: 100%;
+  background-color: var(--amazon-bg-accent);
+  border-radius: var(--border-radius);
+  margin: 0.5rem;
+}
+
+.info-state p {
+  font-size: 0.875rem;
+  color: var(--amazon-text-secondary);
+  margin: 0.5rem 0;
+  max-width: 300px;
+  line-height: 1.4;
+} 

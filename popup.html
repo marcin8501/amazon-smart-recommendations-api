@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Amazon Smart Recommendations</title>
+  <style>
+    body {
+      width: 300px;
+      padding: 15px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    h1 {
+      font-size: 16px;
+      color: #232F3E; /* Amazon dark blue */
+      margin-top: 0;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+    }
+    h1 img {
+      width: 24px;
+      height: 24px;
+      margin-right: 8px;
+    }
+    .description {
+      font-size: 14px;
+      color: #555;
+      margin-bottom: 15px;
+    }
+    .status {
+      font-size: 14px;
+      margin-bottom: 15px;
+      padding: 10px;
+      background-color: #f8f8f8;
+      border-radius: 4px;
+    }
+    .status.active {
+      background-color: #E7F4E8;
+      color: #2E7D32;
+    }
+    .footer {
+      font-size: 12px;
+      color: #888;
+      margin-top: 15px;
+      padding-top: 10px;
+      border-top: 1px solid #eee;
+      text-align: center;
+    }
+    .highlight {
+      color: #f97316; /* Orange */
+      font-weight: 500;
+    }
+    .feature-list {
+      font-size: 13px;
+      margin: 15px 0;
+    }
+    .feature-list li {
+      margin-bottom: 6px;
+    }
+  </style>
+</head>
+<body>
+  <h1>
+    <span class="highlight">Amazon</span> Smart Recommendations
+  </h1>
+  
+  <div class="description">
+    Get AI-powered product recommendations while shopping on Amazon.
+  </div>
+  
+  <div class="status active">
+    Extension is active! Visit an Amazon product page to see smart recommendations.
+  </div>
+  
+  <div class="feature-list">
+    <strong>What's New in v2.0:</strong>
+    <ul>
+      <li>Improved stability and reliability</li>
+      <li>Better product information extraction</li>
+      <li>Enhanced UI with detailed product information</li>
+      <li>Simple toggle button to show/hide recommendations</li>
+    </ul>
+  </div>
+  
+  <div class="footer">
+    Version 2.0 - Standalone Edition
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html> 

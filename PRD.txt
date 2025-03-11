@@ -1,0 +1,252 @@
+Amazon Smart Recommendations Extension - Product Requirements Document (PRD)
+This PRD outlines the specifications for developing the Amazon Smart Recommendations browser extension. The extension enhances the Amazon shopping experience by detecting product pages, extracting key details, fetching intelligent recommendations via the Perplexity API, and displaying them in a user-friendly popup with embedded affiliate links.
+
+Overview
+The extension consists of four core components:
+
+Content Script: Detects Amazon product pages, extracts product details, and manages popup display.
+Background Script: Manages API communication, caching, and recommendation processing.
+Popup UI: Displays recommendations and user settings within the Amazon page.
+Storage: Handles local storage for caching and user preferences.
+The goal is to create a seamless, performant, and compliant tool that provides value to users while adhering to Amazon’s policies and browser extension best practices.
+
+Component Responsibilities
+Content Script
+Detection:
+Identify Amazon product pages using URL patterns (e.g., amazon.com/*/dp/* or amazon.com/gp/product/*).
+Use MutationObserver to detect dynamic content after page load.
+Data Extraction:
+Scrape product details (title, price, image URL, ratings) using robust DOM selectors with fallbacks:
+Title: document.querySelector('#productTitle') or '.product-title'.
+Price: document.querySelector('.a-price .a-offscreen') or '.priceBlock'.
+Image: document.querySelector('#imgTagWrapperId img') or '.main-image'.
+Ratings: document.querySelector('#acrCustomerReviewText') or '.ratings-count'.
+Validate data completeness (e.g., title must be non-empty).
+Communication:
+Send extracted data to the Background Script via chrome.runtime.sendMessage.
+Receive and render recommendations.
+UI Injection:
+Inject the Popup UI into the DOM (e.g., append to document.body).
+Background Script
+Message Handling:
+Listen for messages from the Content Script using chrome.runtime.onMessage.
+Caching:
+Check chrome.storage.local for cached recommendations using product ID as the key.
+Fetch from API if cache is missing or expired.
+API Communication:
+Use the Perplexity API with a POST request to https://api.perplexity.ai/recommend.
+Include secure headers: { 'Authorization': 'Bearer [ENCRYPTED_API_KEY]', 'Content-Type': 'application/json' }.
+Select model based on category (e.g., electronics: tech-specialized, books: literature-specialized, default: general-purpose).
+Limit response to 5 recommendations ({ options: { limit: 5 } }).
+Processing:
+Parse API response, cache recommendations with a timestamp, and send to Content Script.
+Error Handling:
+Retry failed API calls 3 times with exponential backoff (e.g., 1s, 2s, 4s).
+Fallback to cached data if all retries fail; log errors for analytics.
+Popup UI
+Recommendations View:
+Display 3-5 recommendations with:
+Product image (thumbnail, 64x64px).
+Title (truncated to 50 characters).
+Price (formatted as currency).
+Ratings (e.g., "4.5 stars, 120 reviews").
+Recommendation reason (e.g., "Better value", "Higher rated").
+Affiliate link (e.g., https://amazon.com/dp/[ASIN]?tag=smartrecs123).
+Fallback UI: If no recommendations, show "No recommendations available—try again later."
+Settings View:
+Options:
+Priority: Price, Ratings, Features (default: Price).
+Number of recommendations: 1-5 (default: 3).
+Trigger mode: Automatic or Manual (default: Automatic).
+Feedback form: Thumbs up/down buttons with optional text input ("What didn’t you like?").
+Interaction:
+Save settings to chrome.storage.local.
+Open affiliate links in new tabs on click.
+Send feedback to Background Script for analytics.
+Rendering:
+Use React with Tailwind CSS for a responsive, bottom-right popup (300px wide, auto-height).
+Storage
+Local Storage:
+Use chrome.storage.local to store:
+User Settings: { "priority": "price", "count": 3, "trigger": "automatic" }.
+Cached Product Data: { "productId": { "title": "...", "price": "...", "timestamp": ... } }.
+Cached Recommendations: { "productId": { "recommendations": [...], "timestamp": ... } }.
+Caching Rules:
+Expiration times by category:
+Electronics: 12 hours.
+Books: 72 hours.
+Fashion: 24 hours.
+Default: 24 hours.
+Invalidation triggers: User settings change, manual cache clear.
+Data Flow
+User visits an Amazon product page.
+Content Script detects the page and extracts product details.
+Data is sent to the Background Script.
+Background Script checks cache; if expired or missing, it calls the Perplexity API.
+API response is cached and sent back to the Content Script.
+Content Script injects the Popup UI with recommendations.
+User interacts with recommendations or adjusts settings.
+Key Rules and Guidelines
+Compliance
+Amazon Policies:
+Limit data extraction to once per page load.
+Example: Extract title, price, etc., only when MutationObserver confirms page stability.
+Privacy:
+Collect only product data and anonymized settings/feedback.
+Offer opt-in for analytics (e.g., "Help us improve with usage data").
+Security
+API Keys:
+Encrypt and store in chrome.storage.local; never hardcode.
+Data Transmission:
+Use HTTPS for all API calls.
+Implement Content Security Policy (CSP):
+text
+
+Collapse
+
+Wrap
+
+Copy
+Content-Security-Policy: default-src 'self'; script-src 'self'; object-src 'none'; connect-src https://api.perplexity.ai;
+Proxy Setup:
+Route API calls through a secure proxy (e.g., https://proxy.smartrecs.com).
+Enforce rate limiting (e.g., 100 requests/hour per user) and HTTPS.
+Performance
+Optimization:
+Lazy-load Popup UI after recommendations are ready.
+Limit API calls via caching.
+Analytics Metrics:
+Track:
+Recommendation click-through rate (CTR).
+User retention (daily active users).
+API response time (target: <500ms).
+Error rate (target: <1%).
+User Experience
+Popup Design:
+Position: Bottom-right corner, non-overlapping with Amazon UI.
+Load time: <1s after page load.
+Feedback:
+Use feedback to refine recommendation ranking (e.g., downvotes lower weights).
+Fallback States:
+No recommendations: "No suggestions found—check back soon!"
+API error: "Oops, something went wrong. Using cached data."
+Browser Support
+Supported browsers: Chrome, Firefox, Edge (latest versions).
+Test compatibility with browser-specific APIs (e.g., chrome.* vs. browser.*).
+
+Technical Specifications (Continued)
+The technical foundation of the extension ensures scalability, maintainability, and performance. Below are the detailed specifications:
+
+Languages: JavaScript/TypeScript for logic, HTML for structure, CSS for styling.
+Framework: React for building the Popup UI, enabling a modular and interactive design.
+Styling: Tailwind CSS for a responsive, utility-first approach to UI design.
+Storage: chrome.storage.local for persisting cached recommendations and user preferences.
+API Communication: Use the fetch API to securely call the Perplexity API with appropriate headers.
+Build Tool: Webpack to bundle and optimize the extension’s assets.
+Testing: Jest for unit tests and Playwright for end-to-end (E2E) tests.
+Third-Party Libraries:
+webextension-polyfill: Ensures compatibility across Chrome, Firefox, and Edge.
+LRU-cache: Implements an efficient caching mechanism for API responses.
+Crypto-JS: Encrypts sensitive data stored locally (e.g., API keys or user preferences).
+DOMPurify: Sanitizes dynamically injected content to prevent security risks.
+Recommendation Logic
+The recommendation engine drives the core functionality of the extension. It must deliver relevant suggestions based on user preferences and product context while optimizing API usage. The logic is structured as follows:
+
+Model Selection:
+Leverage Perplexity API’s category-specific models:
+Electronics: tech-specialized.
+Books: literature-specialized.
+Fashion: style-specialized.
+Default: general-purpose (for uncategorized or multi-category products).
+Determine the model based on the product’s primary category extracted from the page.
+Request Payload:
+Construct API requests with product details and user preferences:
+json
+
+Collapse
+
+Wrap
+
+Copy
+{
+  "product": { "title": "Example Product", "category": "Electronics", "price": 99.99 },
+  "preferences": { "priorityFactors": ["price", "ratings"], "maxPrice": 100 },
+  "options": { "limit": 5, "includeReasoning": true }
+}
+Response Parsing:
+Extract key fields from the API response: recommendations, reasoning, and confidence scores.
+Discard recommendations with confidence scores below 0.7 to ensure quality.
+Ranking:
+Sort recommendations according to user-defined priorities:
+Price: Ascending order (lowest first).
+Ratings: Descending order (highest first).
+Features: Ranked by the number of matching desired features.
+Default to a balanced ranking (e.g., weighted average of price, ratings, and features) if no priority is specified.
+Feedback Loop:
+Incorporate user feedback via thumbs up/down interactions:
+Downvoted products are deprioritized in future recommendations.
+Upvoted products’ attributes (e.g., brand, features) are given higher weight.
+Content Security Policy (CSP)
+Security is paramount to protect users from vulnerabilities like cross-site scripting (XSS). The extension enforces a strict CSP:
+
+text
+
+Collapse
+
+Wrap
+
+Copy
+Content-Security-Policy:
+  default-src 'self';
+  script-src 'self';
+  style-src 'self' https://cdn.tailwindcss.com;
+  img-src 'self' https://images.amazon.com;
+  connect-src 'self' https://api.perplexity.ai https://proxy.smartrecs.com;
+  object-src 'none';
+Details:
+Restrict scripts, styles, and images to trusted sources ('self' or specific domains).
+Permit API calls only to Perplexity and a custom proxy server.
+Prohibit plugins and objects to minimize attack surfaces.
+Fallback UI States
+The Popup UI must handle edge cases and errors gracefully to maintain a positive user experience:
+
+No Recommendations Available:
+Message: "No recommendations available right now. Try again later or adjust your settings."
+Action: Provide a "Refresh" button to retry the API call.
+API Failure:
+Message: "Oops! Something went wrong. Using cached recommendations if available."
+Fallback: If no cache exists, display: "Unable to load recommendations. Please try again later."
+Slow API Response:
+UI: Show a loading spinner with "Fetching recommendations..." for up to 10 seconds.
+Fallback: Timeout after 10 seconds and switch to cached data or an error message.
+Invalid Product Page:
+Message: "This page doesn’t seem to be a product page. Try navigating to a specific product."
+Testing and Quality Assurance
+Robust testing ensures the extension is reliable, performant, and bug-free. The testing strategy includes:
+
+Unit Testing (Jest)
+Coverage Goals:
+100% coverage for critical modules: ProductDataExtractor, PerplexityAPIClient, CachingService.
+Mock external dependencies (e.g., DOM, API responses).
+Key Scenarios:
+Product detection across various Amazon page layouts.
+Data extraction with fallback selectors for robustness.
+API request formatting and response handling.
+Integration Testing
+Focus Areas:
+Communication between Content Script and Background Script.
+Cache behavior under hit/miss conditions.
+Settings updates and their effect on recommendations.
+End-to-End Testing (Playwright)
+Test Cases:
+Full workflow: Page load → Detection → Extraction → API call → Popup rendering.
+Error handling: API downtime, invalid pages.
+Browser compatibility: Chrome, Firefox, Edge.
+Performance Metrics:
+Page load impact: <100ms increase.
+Popup render time: <1s after data is received.
+Performance Testing
+Benchmarks:
+API response time: Target <500ms.
+Memory footprint: <10MB per tab.
+CPU usage: Negligible when idle.

@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Generate Extension Icons</title>
+    <style>
+        .icon-container {
+            margin: 20px;
+            text-align: center;
+        }
+        canvas {
+            border: 1px solid #ccc;
+            margin: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="icon-container">
+        <h2>Extension Icons</h2>
+        <p>Right-click each icon and select "Save image as..." to save them as PNG files:</p>
+        <div>
+            <h3>16x16</h3>
+            <canvas id="canvas16" width="16" height="16"></canvas>
+        </div>
+        <div>
+            <h3>48x48</h3>
+            <canvas id="canvas48" width="48" height="48"></canvas>
+        </div>
+        <div>
+            <h3>128x128</h3>
+            <canvas id="canvas128" width="128" height="128"></canvas>
+        </div>
+    </div>
+    <script>
+        const sizes = [16, 48, 128];
+        const img = new Image();
+        img.src = 'icons/icon.svg';
+        img.onload = function() {
+            sizes.forEach(size => {
+                const canvas = document.getElementById(`canvas${size}`);
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, size, size);
+            });
+        };
+    </script>
+</body>
+</html> 

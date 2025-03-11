@@ -303,21 +303,26 @@ const createPrompt = (product) => {
   const category = product.category || 'General';
   const categoryConfig = getCategoryConfig(category);
   
-  // Extract keywords - only if absolutely needed
-  // Skip keywords extraction for better performance
-  // const keywords = extractKeywords(product.title);
+  // Create a more specific system prompt that asks for real, searchable products
+  const systemPrompt = `You are a shopping expert specializing in Amazon products. For the given product, recommend 3 SPECIFIC, REAL alternative products that actually exist on Amazon. Don't use generic names or categories. Follow this structure for each recommendation:
+  1. Better Value Alternative: A real product that's cheaper but has similar features. Include exact product name, price, brand.
+  2. Premium Alternative: A higher quality product with better features. Include exact product name, price, brand.
+  3. Popular Alternative: A highly-rated product that many Amazon customers prefer. Include exact product name, price, brand.
   
-  // Create an even shorter system prompt to save tokens and time
-  const systemPrompt = `Recommend 3 alternatives to this ${category} product with these categories: Better Value (cheaper), Premium Option (better quality), and Popular Choice (highly rated). For each: name, price, key features, and why it's better. Be very concise.`;
+For EACH product, provide: complete product name (be specific), exact price, and 1-2 concrete reasons why it's a better choice. Users will search for these exact product names on Amazon, so they must be real products with their full, specific names. Don't use placeholder names like "Premium Option".`;
   
-  // Create ultra-short user prompt
+  // Create detailed user prompt with all available product information
   const userPrompt = `Product: ${product.title || 'Unknown'}
-Price: ${product.price || 'Unknown'}`;
+Price: ${product.price || 'Unknown'}
+Brand: ${product.brand || 'Unknown'}
+Category: ${category}
+
+Provide 3 real, specific alternative products that actually exist on Amazon with their COMPLETE product names that can be directly searched. Include specific prices and concrete reasons why each is a good alternative.`;
   
   return {
     systemPrompt,
     userPrompt,
-    temperature: categoryConfig.temperature || 0.35
+    temperature: 0.2 // Lower temperature for more factual responses
   };
 };
 
@@ -584,9 +589,9 @@ function parseRecommendationsFromContent(content, product) {
     
     // Try to find sections for each recommendation type
     const recommendationTypes = [
-      { label: "Premium Option", search: /premium|better|higher/i },
-      { label: "Better Value", search: /value|budget|cheaper|affordable/i },
-      { label: "Most Popular", search: /popular|rated|best.?selling/i }
+      { label: "Premium Alternative", search: /premium|better|higher|quality/i },
+      { label: "Better Value", search: /value|budget|cheaper|affordable|cost/i },
+      { label: "Most Popular", search: /popular|rated|best.?selling|customer|review/i }
     ];
     
     // Process each paragraph to find recommendations
@@ -608,38 +613,78 @@ function parseRecommendationsFromContent(content, product) {
       let price = extractPrice(paragraph) || defaultPrice;
       let reason = extractReason(paragraph);
       
+      // Parse brand from title if possible
+      let brand = null;
+      if (title && title.includes(' ')) {
+        // Take first word as potential brand
+        brand = title.split(' ')[0];
+      }
+      
       // Only add if we found a title
       if (title) {
+        // Create search query for potential affiliate link
+        const searchQuery = encodeURIComponent(title);
+        const affiliateTag = 'smartrecs-20'; // Example affiliate tag
+        
+        // Structure for a potential Amazon affiliate link
+        const affiliateLink = `https://www.amazon.com/s?k=${searchQuery}&tag=${affiliateTag}`;
+        
         recommendations.push({
           title: title,
           price: price,
           reason: reason || `${matchedType.label} for this product category`,
           rating: "4.5",
           reviewCount: "100+ reviews",
-          imageUrl: defaultImage
+          imageUrl: defaultImage,
+          type: matchedType.label,
+          brand: brand,
+          affiliateLink: affiliateLink
         });
       }
     }
     
-    // If we couldn't extract structured recommendations, create generic ones
-    if (recommendations.length === 0) {
-      console.log("Could not parse structured recommendations, creating generic ones");
+    // If we haven't found 3 recommendations, look for list-based format
+    if (recommendations.length < 3) {
+      const listItems = content.match(/\d+\.\s+[^\n]+/g) || [];
       
-      recommendationTypes.forEach(type => {
-        recommendations.push({
-          title: `${type.label} for ${product.title || 'this product'}`,
-          price: type.label === "Better Value" ? 
-            (Number(defaultPrice.toString().replace(/[^0-9.]/g, '')) * 0.8).toFixed(2) : 
-            (type.label === "Premium Option" ? 
-              (Number(defaultPrice.toString().replace(/[^0-9.]/g, '')) * 1.2).toFixed(2) : 
-              defaultPrice),
-          reason: `${type.label} with ${type.label === "Better Value" ? "lower price" : 
-            type.label === "Premium Option" ? "enhanced features" : "great reviews"}`,
-          rating: type.label === "Most Popular" ? "4.8" : "4.3",
-          reviewCount: type.label === "Most Popular" ? "500+ reviews" : "100+ reviews",
-          imageUrl: defaultImage
-        });
-      });
+      for (let i = 0; i < listItems.length && recommendations.length < 3; i++) {
+        const item = listItems[i];
+        
+        // Try to extract product details
+        let title = extractProductTitle(item);
+        let price = extractPrice(content) || defaultPrice;
+        let reason = extractReason(content);
+        
+        // Determine type based on index or content
+        const type = recommendationTypes[i % recommendationTypes.length].label;
+        
+        // Parse brand from title if possible
+        let brand = null;
+        if (title && title.includes(' ')) {
+          brand = title.split(' ')[0];
+        }
+        
+        if (title) {
+          // Create search query for potential affiliate link
+          const searchQuery = encodeURIComponent(title);
+          const affiliateTag = 'smartrecs-20'; // Example affiliate tag
+          
+          // Structure for a potential Amazon affiliate link
+          const affiliateLink = `https://www.amazon.com/s?k=${searchQuery}&tag=${affiliateTag}`;
+          
+          recommendations.push({
+            title: title,
+            price: price,
+            reason: reason || `${type} for this product category`,
+            rating: "4.5",
+            reviewCount: "100+ reviews",
+            imageUrl: defaultImage,
+            type: type,
+            brand: brand,
+            affiliateLink: affiliateLink
+          });
+        }
+      }
     }
     
     return recommendations;

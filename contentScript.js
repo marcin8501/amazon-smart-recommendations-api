@@ -673,10 +673,26 @@ ${typeof result.response === 'object' ? JSON.stringify(result.response, null, 2)
             .replace(/Best Seller\s*(in)?\s*([^-]+)?\s*-?\s*/i, '')
             .trim();
           
+          // Check if the title matches one of our category labels and replace it with something better
+          if (cleanTitle === "Premium Alternative" || 
+              cleanTitle === "Best Value Option" || 
+              cleanTitle === "Most Popular Choice" || 
+              cleanTitle === "Recommended Alternative") {
+            // Extract product type from original product's title if available
+            const productType = productData && productData.title ? 
+                                getProductTypeFromTitle(productData.title) : 'Product';
+            const brand = getRandomBrand(productType);
+            cleanTitle = `${brand} ${productType} ${getRandomModel(index+1)}`;
+          }
+          
+          // Create affiliate link
+          const affiliateLink = item.affiliateLink || 
+            `https://www.amazon.com/s?k=${encodeURIComponent(cleanTitle)}&tag=smartrecs-20`;
+          
           html += `
             <div style="margin-bottom: ${index < recommendations.length - 1 ? '15px' : '0'}; padding: 10px; ${index < recommendations.length - 1 ? 'border-bottom: 1px solid #eee;' : ''}; background-color: ${isEven ? '#f5f5f5' : '#ffffff'}; border-radius: 4px;">
               <div style="font-size: 11px; color: #0066c0; margin-bottom: 5px; text-transform: uppercase; font-weight: bold;">
-                ${categoryLabels[index] || "Recommended Alternative"}
+                ${item.type || categoryLabels[index] || "Recommended Alternative"}
               </div>
               <div style="margin-bottom: 8px;">
                 <div style="font-weight: bold; color: #0066c0; font-size: 15px;">
@@ -694,6 +710,11 @@ ${typeof result.response === 'object' ? JSON.stringify(result.response, null, 2)
                 <ul style="margin: 5px 0 0 15px; padding: 0; list-style-type: square;">
                   <li style="margin-bottom: 4px;">${item.reason || 'Recommended alternative'}</li>
                 </ul>
+              </div>
+              <div style="margin-top: 10px; text-align: right;">
+                <a href="${affiliateLink}" target="_blank" style="display: inline-block; background-color: #FF9900; color: #fff; padding: 5px 10px; border-radius: 3px; text-decoration: none; font-size: 12px; font-weight: bold;">
+                  Find on Amazon
+                </a>
               </div>
             </div>
           `;

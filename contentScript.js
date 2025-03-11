@@ -673,18 +673,6 @@ ${typeof result.response === 'object' ? JSON.stringify(result.response, null, 2)
             .replace(/Best Seller\s*(in)?\s*([^-]+)?\s*-?\s*/i, '')
             .trim();
           
-          // Check if the title matches one of our category labels and replace it with something better
-          if (cleanTitle === "Premium Alternative" || 
-              cleanTitle === "Best Value Option" || 
-              cleanTitle === "Most Popular Choice" || 
-              cleanTitle === "Recommended Alternative") {
-            // Extract product type from original product's title if available
-            const productType = productData && productData.title ? 
-                                getProductTypeFromTitle(productData.title) : 'Product';
-            const brand = getRandomBrand(productType);
-            cleanTitle = `${brand} ${productType} ${getRandomModel(index+1)}`;
-          }
-          
           // Create affiliate link
           const affiliateLink = item.affiliateLink || 
             `https://www.amazon.com/s?k=${encodeURIComponent(cleanTitle)}&tag=smartrecs-20`;

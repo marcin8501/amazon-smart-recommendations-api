@@ -304,12 +304,23 @@ const createPrompt = (product) => {
   const categoryConfig = getCategoryConfig(category);
   
   // Create a more specific system prompt that asks for real, searchable products
-  const systemPrompt = `You are a shopping expert specializing in Amazon products. For the given product, recommend 3 SPECIFIC, REAL alternative products that actually exist on Amazon. Don't use generic names or categories. Follow this structure for each recommendation:
-  1. Better Value Alternative: A real product that's cheaper but has similar features. Include exact product name, price, brand.
-  2. Premium Alternative: A higher quality product with better features. Include exact product name, price, brand.
-  3. Popular Alternative: A highly-rated product that many Amazon customers prefer. Include exact product name, price, brand.
+  const systemPrompt = `You are a knowledgeable expert on Amazon products. For the given product, recommend 3 REAL, SPECIFIC alternative products that are ACTUALLY SOLD ON AMAZON RIGHT NOW. Products must include:
+  - EXACT product names as they appear on Amazon (not generic descriptions)
+  - Specific model numbers where applicable
+  - Current approximate price on Amazon
+  - Manufacturer/brand name
   
-For EACH product, provide: complete product name (be specific), exact price, and 1-2 concrete reasons why it's a better choice. Users will search for these exact product names on Amazon, so they must be real products with their full, specific names. Don't use placeholder names like "Premium Option".`;
+Structure your recommendations like this:
+1. Better Value Alternative: [SPECIFIC PRODUCT NAME including brand and model] - $XX.XX
+   Why it's better: [1-2 concrete reasons]
+
+2. Premium Alternative: [SPECIFIC PRODUCT NAME including brand and model] - $XX.XX
+   Why it's better: [1-2 concrete reasons]
+
+3. Most Popular Alternative: [SPECIFIC PRODUCT NAME including brand and model] - $XX.XX
+   Why it's better: [1-2 concrete reasons]
+
+EXTREMELY IMPORTANT: Do NOT give generic responses like "Premium Alternative" or "Best Value Option" as product names. Each recommendation must have a REAL, SPECIFIC product name that someone could search for and find on Amazon. For example, "Sony WH-1000XM4 Wireless Noise-Canceling Headphones" not "Premium Noise-Canceling Headphones".`;
   
   // Create detailed user prompt with all available product information
   const userPrompt = `Product: ${product.title || 'Unknown'}
@@ -317,12 +328,12 @@ Price: ${product.price || 'Unknown'}
 Brand: ${product.brand || 'Unknown'}
 Category: ${category}
 
-Provide 3 real, specific alternative products that actually exist on Amazon with their COMPLETE product names that can be directly searched. Include specific prices and concrete reasons why each is a good alternative.`;
+Provide 3 REAL alternative products that are actually sold on Amazon with their EXACT product names as they appear on Amazon. Include specific model numbers, current prices, and 1-2 concrete reasons why each is a good alternative. Users will search for these exact product names on Amazon, so they MUST be real products with complete and accurate names.`;
   
   return {
     systemPrompt,
     userPrompt,
-    temperature: 0.2 // Lower temperature for more factual responses
+    temperature: 0.1 // Lower temperature for more factual responses
   };
 };
 
@@ -486,6 +497,14 @@ module.exports = async (req, res) => {
 
       // Get the response data
       const rawData = await response.json();
+      
+      // Add detailed logging for debugging purposes
+      console.log("=== PERPLEXITY RAW RESPONSE ===");
+      console.log(JSON.stringify(rawData, null, 2));
+      if (rawData.choices && rawData.choices[0] && rawData.choices[0].message) {
+        console.log("=== PERPLEXITY MESSAGE CONTENT ===");
+        console.log(rawData.choices[0].message.content);
+      }
       
       // Clean the response data
       const data = cleanResponse(rawData);
@@ -696,7 +715,26 @@ function parseRecommendationsFromContent(content, product) {
 
 // Helper function to extract product title
 function extractProductTitle(text) {
-  // Look for patterns like "1. Product Name:" or "Product Name -"
+  // First, try to find a complete product name with price pattern
+  const fullProductPatterns = [
+    /\d+\.\s*(.*?)(?:\s*-\s*\$|\s*:\s*\$|\s*\(\$|\s+\$)/i,
+    /\*\*(.*?)\*\*\s*-\s*\$/i,
+    /Better Value Alternative:\s*(.*?)(?:\s*-\s*\$|\s+\$)/i,
+    /Premium Alternative:\s*(.*?)(?:\s*-\s*\$|\s+\$)/i,
+    /Most Popular Alternative:\s*(.*?)(?:\s*-\s*\$|\s+\$)/i,
+    /Popular Alternative:\s*(.*?)(?:\s*-\s*\$|\s+\$)/i
+  ];
+  
+  for (const pattern of fullProductPatterns) {
+    const match = text.match(pattern);
+    if (match && match[1] && match[1].trim().length > 3) {
+      const title = match[1].trim();
+      console.log("Extracted full product title:", title);
+      return title;
+    }
+  }
+  
+  // Fallback to more general patterns if specific ones don't match
   const patterns = [
     /\d+\.\s*([^:]+):/,
     /\*\*([^:*]+)\*\*/,
@@ -709,16 +747,20 @@ function extractProductTitle(text) {
   for (const pattern of patterns) {
     const match = text.match(pattern);
     if (match && match[1] && match[1].trim().length > 3) {
-      return match[1].trim();
+      const title = match[1].trim();
+      console.log("Extracted product title (fallback):", title);
+      return title;
     }
   }
   
   // If no patterns matched, take the first sentence if it's not too long
   const firstSentence = text.split(/[.!?]/)[0];
   if (firstSentence && firstSentence.length > 3 && firstSentence.length < 100) {
+    console.log("Using first sentence as title:", firstSentence.trim());
     return firstSentence.trim();
   }
   
+  console.log("Could not extract title from text:", text.substring(0, 100) + "...");
   return null;
 }
 

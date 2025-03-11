@@ -654,6 +654,13 @@ ${typeof result.response === 'object' ? JSON.stringify(result.response, null, 2)
       
       // Check if we have recommendations
       if (recommendations && recommendations.length > 0) {
+        // Define category labels based on index
+        const categoryLabels = [
+          "Premium Alternative",
+          "Best Value Option",
+          "Most Popular Choice"
+        ];
+        
         // Add recommendations
         recommendations.forEach((item, index) => {
           const isEven = index % 2 === 0;
@@ -668,17 +675,24 @@ ${typeof result.response === 'object' ? JSON.stringify(result.response, null, 2)
           
           html += `
             <div style="margin-bottom: ${index < recommendations.length - 1 ? '15px' : '0'}; padding: 10px; ${index < recommendations.length - 1 ? 'border-bottom: 1px solid #eee;' : ''}; background-color: ${isEven ? '#f5f5f5' : '#ffffff'}; border-radius: 4px;">
+              <div style="font-size: 11px; color: #0066c0; margin-bottom: 5px; text-transform: uppercase; font-weight: bold;">
+                ${categoryLabels[index] || "Recommended Alternative"}
+              </div>
               <div style="margin-bottom: 8px;">
                 <div style="font-weight: bold; color: #0066c0; font-size: 15px;">
                   ${cleanTitle}
                 </div>
+                <div style="color: #B12704; font-size: 14px; margin-top: 4px;">
+                  ${item.price ? '$' + item.price : ''}
+                </div>
+                ${item.rating ? `
+                <div style="color: #007600; font-size: 12px; margin-top: 4px;">
+                  ${item.rating} stars (${item.reviewCount || 'No reviews yet'})
+                </div>` : ''}
               </div>
               <div style="color: #333; font-size: 13px; margin-left: 5px;">
                 <ul style="margin: 5px 0 0 15px; padding: 0; list-style-type: square;">
                   <li style="margin-bottom: 4px;">${item.reason || 'Recommended alternative'}</li>
-                  <li style="margin-bottom: 4px;">${index === 0 ? 'More affordable option with essential features' : 
-                                                index === 1 ? 'Enhanced features include better durability and performance' : 
-                                                'Highly rated by Amazon customers with proven reliability'}</li>
                 </ul>
               </div>
             </div>
@@ -693,7 +707,7 @@ ${typeof result.response === 'object' ? JSON.stringify(result.response, null, 2)
           </div>
         </div>
         <div style="font-size: 11px; color: #565959; text-align: center; margin-top: 15px; padding: 5px;">
-          <p style="margin: 0;">${isRealData ? 'Powered by Perplexity API' : isMockData ? 'Using simulated recommendations' : 'No recommendations available'}</p>
+          <p style="margin: 0;">${isRealData ? '✨ Real recommendations from Perplexity AI' : isMockData ? '⚠️ Using simulated recommendations' : 'No recommendations available'}</p>
         </div>
       `;
       

@@ -48,7 +48,7 @@ module.exports = async (req, res) => {
 
     // Prepare the request to Perplexity API
     const requestBody = {
-      model: "sonar-small-online",
+      model: "sonar",
       messages: [
         { 
           role: "system", 

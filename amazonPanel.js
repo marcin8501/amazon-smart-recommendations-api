@@ -1,397 +1,219 @@
-// Amazon Smart Recommendations Panel
-// Standalone version 2.0.0
-// This version is completely independent and avoids all extension APIs
+// Amazon Smart Recommendations Extension - Panel Script v3.0.0
+// This script manages the Amazon Recommendations panel UI
 
-(function() {
-  console.log('Standalone Amazon Panel v2.0.0 - Starting');
+console.log('Amazon Smart Recommendations Panel Script loaded');
 
-  // Only run on Amazon product pages
-  function isProductPage() {
-    try {
-      const url = window.location.href;
-      return url.includes('amazon.com') && 
-             (url.includes('/dp/') || url.includes('/gp/product/')) && 
-             !!document.getElementById('productTitle');
-    } catch (e) {
-      console.error('Error checking if product page:', e);
-      return false;
+// Store product data
+let currentProductData = null;
+
+// Listen for messages from the content script
+window.addEventListener('message', function(event) {
+  // Only accept messages from our window
+  if (event.source !== window) return;
+  
+  // Check if it's a message from our content script
+  if (event.data.type && event.data.type === 'FROM_CONTENT_SCRIPT') {
+    console.log('Panel received message from content script:', event.data.action);
+    
+    // Handle initialization
+    if (event.data.action === 'init') {
+      currentProductData = event.data.productData;
+      console.log('Panel initialized with product data:', currentProductData);
     }
-  }
-  
-  // Format price with currency symbol
-  function formatPrice(price) {
-    if (!price) return 'Price not available';
-    return `$${parseFloat(price).toFixed(2)}`;
-  }
-  
-  // Extract product information from the page
-  function extractProductData() {
-    try {
-      // Extract ASIN from URL
-      let asin = null;
-      try {
-        const match = window.location.pathname.match(/\/(?:dp|gp\/product)\/([A-Z0-9]{10})/);
-        asin = match ? match[1] : null;
-      } catch (e) {
-        console.warn('Error extracting ASIN:', e);
-      }
-      
-      // Extract product title
-      let title = null;
-      try {
-        const titleElement = document.getElementById('productTitle');
-        title = titleElement ? titleElement.textContent.trim() : null;
-      } catch (e) {
-        console.warn('Error extracting title:', e);
-      }
-      
-      // Extract price
-      let price = null;
-      try {
-        const priceSelectors = [
-          '.priceToPay .a-offscreen', 
-          '.a-price .a-offscreen',
-          '#priceblock_ourprice',
-          '#priceblock_dealprice',
-          '#price_inside_buybox'
-        ];
-        
-        for (const selector of priceSelectors) {
-          try {
-            const element = document.querySelector(selector);
-            if (element) {
-              const priceText = element.textContent.trim();
-              const priceValue = parseFloat(priceText.replace(/[^\d.]/g, ''));
-              if (!isNaN(priceValue) && priceValue > 0) {
-                price = priceValue;
-                break;
-              }
-            }
-          } catch (e) { /* continue to next selector */ }
-        }
-      } catch (e) {
-        console.warn('Error extracting price:', e);
-      }
-      
-      // Extract image
-      let imageUrl = null;
-      try {
-        const imgElement = document.getElementById('landingImage');
-        imageUrl = imgElement ? imgElement.src : null;
-      } catch (e) {
-        console.warn('Error extracting image:', e);
-      }
-      
-      // Extract rating
-      let rating = null;
-      try {
-        const ratingText = document.querySelector('#averageCustomerReviews .a-icon-alt');
-        if (ratingText) {
-          const match = ratingText.textContent.match(/([0-9\.]+) out of/);
-          if (match) rating = parseFloat(match[1]);
-        }
-      } catch (e) {
-        console.warn('Error extracting rating:', e);
-      }
-      
-      // Extract review count
-      let reviewCount = null;
-      try {
-        const reviewElement = document.getElementById('acrCustomerReviewText');
-        if (reviewElement) {
-          const match = reviewElement.textContent.match(/([0-9,]+)/);
-          if (match) reviewCount = parseInt(match[1].replace(/,/g, ''));
-        }
-      } catch (e) {
-        console.warn('Error extracting review count:', e);
-      }
-      
-      // Extract brand
-      let brand = null;
-      try {
-        const brandElement = document.querySelector('#bylineInfo');
-        if (brandElement) {
-          brand = brandElement.textContent
-                  .replace('Visit the ', '')
-                  .replace(' Store', '')
-                  .replace('Brand: ', '')
-                  .trim();
-        }
-      } catch (e) {
-        console.warn('Error extracting brand:', e);
-      }
-      
-      const productData = {
-        asin,
-        title,
-        price,
-        imageUrl,
-        rating,
-        reviewCount,
-        brand,
-        url: window.location.href
-      };
-      
-      console.log('Extracted product data:', productData);
-      return productData;
-    } catch (e) {
-      console.error('Error in extractProductData:', e);
-      return null;
+    
+    // Handle recommendations result
+    if (event.data.action === 'recommendationsResult') {
+      updatePanelContent(event.data.data);
     }
-  }
-  
-  // Generate mockup recommendations based on the current product
-  function generateRecommendations(productData) {
-    try {
-      if (!productData || !productData.title) return [];
-      
-      return [
-        {
-          title: `Better Value Alternative - ${productData.title.substring(0, 30)}...`,
-          reason: '15% cheaper with similar features',
-          price: productData.price ? productData.price * 0.85 : 29.99
-        },
-        {
-          title: `Premium Option - ${productData.brand || 'Brand'} Deluxe`,
-          reason: 'Higher rated with better quality',
-          price: productData.price ? productData.price * 1.15 : 39.99
-        },
-        {
-          title: `Best Seller in ${productData.brand || 'this'} Category`,
-          reason: 'Most popular among Amazon customers',
-          price: productData.price ? productData.price * 1.05 : 34.99
-        }
-      ];
-    } catch (e) {
-      console.error('Error generating recommendations:', e);
-      return [];
+    
+    // Handle API connection test result
+    if (event.data.action === 'apiConnectionResult') {
+      // This is handled by the content script directly
+      console.log('API connection test result:', event.data.data);
     }
-  }
-  
-  // Create and show the recommendations panel
-  function createStandalonePanel() {
-    try {
-      // Check if panel already exists
-      if (document.getElementById('amazon-standalone-panel')) {
-        console.log('Panel already exists');
-        return;
-      }
-      
-      console.log('Creating standalone panel...');
-      
-      // Extract product data
-      const productData = extractProductData();
-      
-      // Create panel container
-      const panel = document.createElement('div');
-      panel.id = 'amazon-standalone-panel';
-      
-      // Style the panel
-      panel.style.position = 'fixed';
-      panel.style.top = '80px';
-      panel.style.right = '0';
-      panel.style.width = '320px';
-      panel.style.maxHeight = '80vh';
-      panel.style.backgroundColor = '#1c3146';
-      panel.style.color = 'white';
-      panel.style.fontFamily = 'Arial, sans-serif';
-      panel.style.zIndex = '2147483647';
-      panel.style.boxShadow = '0 0 10px rgba(0,0,0,0.5)';
-      panel.style.padding = '20px';
-      panel.style.display = 'flex';
-      panel.style.flexDirection = 'column';
-      panel.style.overflowY = 'auto';
-      
-      // Create header
-      const header = document.createElement('div');
-      header.style.display = 'flex';
-      header.style.justifyContent = 'space-between';
-      header.style.alignItems = 'center';
-      header.style.marginBottom = '15px';
-      
-      const title = document.createElement('h2');
-      title.textContent = 'Amazon Recommendations';
-      title.style.margin = '0';
-      title.style.fontSize = '18px';
-      title.style.color = 'white';
-      
-      const closeButton = document.createElement('button');
-      closeButton.textContent = 'X';
-      closeButton.style.background = 'transparent';
-      closeButton.style.border = 'none';
-      closeButton.style.color = 'white';
-      closeButton.style.fontSize = '16px';
-      closeButton.style.cursor = 'pointer';
-      closeButton.onclick = function() {
-        panel.style.display = 'none';
-        toggleButton.style.right = '0';
-      };
-      
-      header.appendChild(title);
-      header.appendChild(closeButton);
-      
-      // Create content area
-      const content = document.createElement('div');
-      content.style.flex = '1';
-      content.style.backgroundColor = 'white';
-      content.style.padding = '15px';
-      content.style.borderRadius = '4px';
-      content.style.color = 'black';
-      content.style.overflowY = 'auto';
-      
-      // Populate content
-      if (productData && productData.title) {
-        // Show product info
-        let html = `
-          <div style="margin-bottom: 15px;">
-            <h3 style="margin: 0 0 8px 0; font-size: 16px; color: #0066c0;">${productData.title}</h3>
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-              <span style="font-size: 18px; color: #B12704; font-weight: bold;">${formatPrice(productData.price)}</span>
-        `;
-        
-        // Add rating if available
-        if (productData.rating) {
-          html += `<div style="color: #FFA41C; font-size: 14px;">`;
-          
-          // Add stars based on rating
-          const fullStars = Math.floor(productData.rating);
-          const hasHalfStar = productData.rating % 1 >= 0.5;
-          
-          for (let i = 0; i < fullStars; i++) {
-            html += '★';
-          }
-          
-          if (hasHalfStar) {
-            html += '★';
-          }
-          
-          for (let i = 0; i < (5 - fullStars - (hasHalfStar ? 1 : 0)); i++) {
-            html += '☆';
-          }
-          
-          html += ` (${productData.reviewCount?.toLocaleString() || '0'})</div>`;
-        }
-        
-        html += `</div>`;
-        
-        // Add ASIN and brand info if available
-        if (productData.asin || productData.brand) {
-          html += `<div style="font-size: 13px; color: #565959; margin-bottom: 15px;">`;
-          if (productData.brand) {
-            html += `<div>Brand: ${productData.brand}</div>`;
-          }
-          if (productData.asin) {
-            html += `<div>ASIN: ${productData.asin}</div>`;
-          }
-          html += `</div>`;
-        }
-        
-        // Add recommendations
-        html += `
-          <div style="margin: 15px 0; padding: 10px; background-color: #f8f8f8; border-radius: 4px;">
-            <h4 style="margin: 0 0 10px 0; font-size: 14px; color: #333;">Recommended Alternatives:</h4>
-            <div id="recommendations-list">
-        `;
-        
-        // Add mockup recommendations
-        const recommendations = generateRecommendations(productData);
-        
-        recommendations.forEach((item, index) => {
-          html += `
-            <div style="margin-bottom: ${index < recommendations.length - 1 ? '12px' : '0'}; padding-bottom: 8px; ${index < recommendations.length - 1 ? 'border-bottom: 1px solid #ddd;' : ''}">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px;">
-                <div style="font-weight: bold; color: #0066c0;">${item.title}</div>
-                <div style="font-weight: bold; color: #B12704;">${formatPrice(item.price)}</div>
-              </div>
-              <div style="color: #067D62; font-size: 12px; font-style: italic;">${item.reason}</div>
-            </div>
-          `;
-        });
-        
-        html += `
-            </div>
-          </div>
-          <div style="font-size: 11px; color: #565959; text-align: center; margin-top: 15px;">
-            Powered by Amazon Smart Recommendations v2.0
-          </div>
-        `;
-        
-        content.innerHTML = html;
-      } else {
-        // Show error message if product data couldn't be extracted
+    
+    // Handle the request to show recommendations
+    if (event.data.action === 'showRecommendations') {
+      const panelElement = document.getElementById('amazon-smart-recommendations');
+      if (panelElement) {
+        // Reset the panel content
+        const content = panelElement.querySelector('.panel-content');
         content.innerHTML = `
-          <p style="color: #C40000;">Sorry, we couldn't extract product information from this page.</p>
-          <p>This might not be a product page, or the product data might be in an unexpected format.</p>
+          <div class="loading" style="text-align: center; padding: 20px;">
+            <p>Loading recommendations...</p>
+          </div>
         `;
+        
+        // Request recommendations
+        getRecommendations(currentProductData || event.data.productData);
       }
-      
-      // Create toggle button
-      const toggleButton = document.createElement('button');
-      toggleButton.id = 'amazon-standalone-toggle';
-      toggleButton.style.position = 'fixed';
-      toggleButton.style.top = '100px';
-      toggleButton.style.right = '320px';
-      toggleButton.style.width = '30px';
-      toggleButton.style.height = '60px';
-      toggleButton.style.backgroundColor = '#FEBD69'; // Amazon yellow
-      toggleButton.style.border = '1px solid #a88734';
-      toggleButton.style.borderRight = 'none';
-      toggleButton.style.borderRadius = '4px 0 0 4px';
-      toggleButton.style.cursor = 'pointer';
-      toggleButton.style.zIndex = '2147483647';
-      toggleButton.style.fontSize = '14px';
-      toggleButton.textContent = '↔';
-      toggleButton.onclick = function() {
-        if (panel.style.display === 'none') {
-          panel.style.display = 'flex';
-          toggleButton.style.right = '320px';
-        } else {
-          panel.style.display = 'none';
-          toggleButton.style.right = '0';
-        }
-      };
-      
-      // Assemble panel
-      panel.appendChild(header);
-      panel.appendChild(content);
-      
-      // Add to document
-      document.body.appendChild(panel);
-      document.body.appendChild(toggleButton);
-      
-      console.log('Standalone Amazon panel created successfully');
-    } catch (e) {
-      console.error('Error creating panel:', e);
     }
   }
+});
+
+// Function to get recommendations
+function getRecommendations(productData) {
+  console.log('Panel requesting recommendations for:', productData);
   
-  // Main initialization function
-  function initialize() {
-    try {
-      console.log('Initializing standalone Amazon panel...');
-      
-      // Only run on product pages
-      if (isProductPage()) {
-        console.log('Amazon product page detected, creating panel');
-        createStandalonePanel();
-      } else {
-        console.log('Not an Amazon product page, exiting');
-      }
-    } catch (e) {
-      console.error('Error in initialize:', e);
-    }
-  }
+  // Send message to content script to get recommendations
+  window.postMessage({
+    type: 'FROM_AMAZON_PANEL',
+    action: 'getRecommendations',
+    productData: productData
+  }, '*');
+}
+
+// Function to test API connection
+function testAPIConnection() {
+  console.log('Panel testing API connection');
   
-  // Wait for page to be fully loaded
-  if (document.readyState === 'complete') {
-    console.log('Document already complete, initializing now');
-    setTimeout(initialize, 500);
-  } else {
-    console.log('Waiting for document to be ready...');
-    window.addEventListener('load', function() {
-      setTimeout(initialize, 500);
+  // Send message to content script to test API connection
+  window.postMessage({
+    type: 'FROM_AMAZON_PANEL',
+    action: 'testAPIConnection'
+  }, '*');
+}
+
+// Update the panel content with recommendations
+function updatePanelContent(data) {
+  console.log('Updating panel content with data:', data);
+  
+  // Get the panel content element
+  const panelElement = document.getElementById('amazon-smart-recommendations');
+  if (!panelElement) return;
+  
+  const content = panelElement.querySelector('.panel-content');
+  if (!content) return;
+  
+  // Check if there's an error or no recommendations
+  if (!data.success || !data.data || !data.data.recommendations || data.data.recommendations.length === 0) {
+    // Create error message
+    const errorMessage = data.error || 'Unable to load recommendations. Please try again later.';
+    
+    content.innerHTML = `
+      <div class="error" style="padding: 15px; color: #721c24; background-color: #f8d7da; border: 1px solid #f5c6cb; border-radius: 5px; margin-bottom: 15px;">
+        <p style="margin: 0;"><strong>Error:</strong> ${errorMessage}</p>
+        <button id="retry-btn" style="margin-top: 10px; padding: 5px 10px; background-color: #f8d7da; border: 1px solid #f5c6cb; border-radius: 3px; cursor: pointer;">Retry</button>
+      </div>
+      <div class="mock-data-warning" style="padding: 15px; color: #856404; background-color: #fff3cd; border: 1px solid #ffeeba; border-radius: 5px;">
+        <p style="margin: 0;"><strong>Note:</strong> Showing simulated product alternatives.</p>
+        <p style="margin: 5px 0 0 0; font-size: 0.9em;">These are not real Amazon recommendations.</p>
+      </div>
+    `;
+    
+    // Add event listener for retry button
+    document.getElementById('retry-btn').addEventListener('click', () => {
+      content.innerHTML = `
+        <div class="loading" style="text-align: center; padding: 20px;">
+          <p>Loading recommendations...</p>
+        </div>
+      `;
+      getRecommendations(currentProductData);
     });
+    
+    return;
   }
   
-  console.log('Standalone Amazon Panel v2.0.0 - Setup complete');
-})();
+  // Extract recommendations from the response
+  const recommendations = data.data.recommendations;
+  const usingMockData = data.data.usingMockData || data.mock || false;
+  
+  // Clear the content
+  content.innerHTML = '';
+  
+  // Add a connection banner if using mock data
+  if (usingMockData) {
+    const mockBanner = document.createElement('div');
+    mockBanner.className = 'mock-banner';
+    mockBanner.style.padding = '10px 15px';
+    mockBanner.style.backgroundColor = '#fff3cd';
+    mockBanner.style.color = '#856404';
+    mockBanner.style.borderRadius = '5px';
+    mockBanner.style.marginBottom = '15px';
+    mockBanner.style.fontSize = '0.9em';
+    mockBanner.innerHTML = `
+      <p style="margin: 0;"><strong>Note:</strong> Using sample data.</p>
+      <p style="margin: 5px 0 0 0; font-size: 0.9em;">Unable to connect to recommendation service.</p>
+    `;
+    content.appendChild(mockBanner);
+  }
+  
+  // Create recommendations list
+  const recommendationsList = document.createElement('div');
+  recommendationsList.className = 'recommendations-list';
+  
+  // Add each recommendation to the list
+  recommendations.forEach((rec, index) => {
+    const recItem = document.createElement('div');
+    recItem.className = 'recommendation-item';
+    recItem.style.borderBottom = index < recommendations.length - 1 ? '1px solid #eee' : 'none';
+    recItem.style.paddingBottom = '15px';
+    recItem.style.marginBottom = '15px';
+    
+    // Determine the label based on index
+    let label = '';
+    if (index === 0) label = 'Premium Option';
+    else if (index === 1) label = 'Better Value';
+    else if (index === 2) label = 'Most Popular';
+    else label = `Alternative ${index + 1}`;
+    
+    // Create recommendation HTML
+    recItem.innerHTML = `
+      <div style="display: flex; align-items: flex-start;">
+        <div class="rec-image" style="width: 80px; margin-right: 15px;">
+          <img src="${rec.imageUrl || 'https://via.placeholder.com/80'}" alt="${rec.title}" style="max-width: 100%; border: 1px solid #ddd;">
+        </div>
+        <div class="rec-details" style="flex: 1;">
+          <div class="rec-label" style="font-size: 0.8em; font-weight: bold; color: #e47911; margin-bottom: 5px;">${label}</div>
+          <div class="rec-title" style="font-weight: bold; margin-bottom: 5px;">${rec.title}</div>
+          <div class="rec-price" style="color: #B12704; margin-bottom: 5px;">$${rec.price}</div>
+          <div class="rec-ratings" style="font-size: 0.8em; color: #007185; margin-bottom: 5px;">
+            ${rec.rating ? `${rec.rating} stars (${rec.reviewCount || '0 reviews'})` : ''}
+          </div>
+          <div class="rec-reason" style="font-size: 0.9em; color: #565959;">${rec.reason || ''}</div>
+          <a href="#" class="view-button" style="display: inline-block; margin-top: 10px; padding: 5px 10px; background-color: #f0c14b; border: 1px solid #a88734; border-radius: 3px; text-decoration: none; color: #111; font-size: 0.9em;">View Product</a>
+        </div>
+      </div>
+    `;
+    
+    recommendationsList.appendChild(recItem);
+  });
+  
+  content.appendChild(recommendationsList);
+  
+  // Add footer with source information
+  const footer = document.createElement('div');
+  footer.className = 'recommendations-footer';
+  footer.style.marginTop = '15px';
+  footer.style.paddingTop = '10px';
+  footer.style.borderTop = '1px solid #eee';
+  footer.style.fontSize = '0.8em';
+  footer.style.color = '#565959';
+  footer.style.textAlign = 'center';
+  
+  // Update footer text based on data source
+  if (usingMockData) {
+    footer.textContent = "Powered by Amazon Smart Recommendations (Sample Data)";
+  } else if (data.data.source && data.data.source.includes("API")) {
+    footer.textContent = "Powered by Amazon Smart Recommendations API";
+  } else if (data.data.usingMockData) {
+    footer.textContent = "Using sample data from our API";
+  } else {
+    footer.textContent = "Powered by Perplexity API";
+  }
+  
+  content.appendChild(footer);
+  
+  // Add event listeners for view buttons
+  const viewButtons = content.querySelectorAll('.view-button');
+  viewButtons.forEach((button, index) => {
+    button.addEventListener('click', (e) => {
+      e.preventDefault();
+      // In a real extension, this would navigate to the product page
+      alert(`This would navigate to the product: ${recommendations[index].title}`);
+    });
+  });
+}
+
+// Make updatePanelContent available to the window for diagnostics
+window.updatePanelContent = updatePanelContent; 

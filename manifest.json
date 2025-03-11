@@ -1,45 +1,39 @@
 {
   "manifest_version": 3,
   "name": "Amazon Smart Recommendations",
-  "version": "2.0",
-  "description": "Get AI-powered product recommendations while shopping on Amazon",
+  "version": "3.0.0",
+  "description": "Get smart product recommendations while shopping on Amazon",
   "permissions": [
-    "storage",
-    "activeTab"
+    "activeTab",
+    "storage"
   ],
   "host_permissions": [
-    "https://www.amazon.com/*"
-  ],
-  "content_scripts": [
-    {
-      "matches": [
-        "https://www.amazon.com/*/dp/*",
-        "https://www.amazon.com/dp/*",
-        "https://www.amazon.com/gp/product/*"
-      ],
-      "exclude_matches": [
-        "*://merch.amazon.com/*",
-        "*://sellercentral.amazon.com/*",
-        "*://advertising.amazon.com/*",
-        "*://kdp.amazon.com/*",
-        "*://*.amazon.com/gp/help/*",
-        "*://*.amazon.com/ap/signin*",
-        "*://*.amazon.com/your-account*"
-      ],
-      "js": ["contentScript.js"],
-      "css": ["sidePanel.css"]
-    }
-  ],
-  "web_accessible_resources": [
-    {
-      "resources": ["amazonPanel.js"],
-      "matches": ["https://www.amazon.com/*"]
-    }
+    "*://*.amazon.com/*",
+    "https://amazon-smart-recommendations-nxqwcy3cb-marcin8501s-projects.vercel.app/*",
+    "https://cors-anywhere.herokuapp.com/*",
+    "https://api.allorigins.win/*",
+    "https://cors-proxy.htmldriven.com/*",
+    "https://corsproxy.io/*"
   ],
   "background": {
     "service_worker": "background.js"
   },
-  "action": {
-    "default_popup": "popup.html"
+  "content_scripts": [
+    {
+      "matches": ["*://*.amazon.com/*"],
+      "js": ["contentScript.js"],
+      "run_at": "document_end"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["amazonPanel.js", "api-test.html"],
+      "matches": ["*://*.amazon.com/*"]
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
   }
 } 

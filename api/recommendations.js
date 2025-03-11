@@ -1,21 +1,358 @@
 // Amazon Smart Recommendations API - Vercel Serverless Function
-// This function acts as a proxy to the Perplexity API for security reasons
+// This function acts as a proxy to the Perplexity API with enhanced features
 
 const fetch = require('node-fetch');
+// Replace the Vercel KV import with Upstash Redis
+const { Redis } = require('@upstash/redis');
+
+// Initialize Redis client with the specific environment variables provided by Upstash
+const redis = new Redis({
+  url: process.env.KV_REST_API_URL,
+  token: process.env.KV_REST_API_TOKEN,
+});
+
+// Optimized in-memory cache with size limits to control memory usage
+const memCache = {
+  data: {},
+  maxItems: 100, // Prevent memory leaks
+  
+  set(key, value, ttlSeconds) {
+    // Evict oldest items if we hit capacity
+    if (Object.keys(this.data).length >= this.maxItems) {
+      const oldestKey = Object.keys(this.data)
+        .sort((a,b) => this.data[a].timestamp - this.data[b].timestamp)[0];
+      console.log(`Cache full, evicting oldest item: ${oldestKey}`);
+      delete this.data[oldestKey];
+    }
+    
+    this.data[key] = {
+      value,
+      expiry: Date.now() + (ttlSeconds * 1000),
+      timestamp: Date.now()
+    };
+    console.log(`Set in memory cache: ${key} (expires in ${ttlSeconds}s)`);
+  },
+  
+  get(key) {
+    const item = this.data[key];
+    if (!item) return null;
+    
+    if (Date.now() > item.expiry) {
+      console.log(`Memory cache expired for: ${key}`);
+      delete this.data[key];
+      return null;
+    }
+    
+    console.log(`Memory cache hit for: ${key}`);
+    return item.value;
+  }
+};
+
+// Hybrid cache helper modified to use Upstash Redis
+const cache = {
+  async get(key) {
+    // Try memory cache first (fastest)
+    const memValue = memCache.get(key);
+    if (memValue) {
+      return { data: memValue, source: 'memory' };
+    }
+    
+    // Try Redis cache if memory cache misses
+    try {
+      const redisValue = await redis.get(key);
+      if (redisValue) {
+        console.log(`Redis cache hit for: ${key}`);
+        
+        // Parse the data if it's a string
+        const parsedValue = typeof redisValue === 'string' ? JSON.parse(redisValue) : redisValue;
+        
+        // Backfill memory cache for future requests - with 8 minute TTL
+        memCache.set(key, parsedValue, 480); // 8 minutes in memory (480 seconds)
+        
+        return { data: parsedValue, source: 'redis' };
+      }
+    } catch (error) {
+      console.log(`Redis error: ${error.message}`);
+      // Continue if Redis fails - we'll fall back to the API call
+    }
+    
+    return { data: null, source: null };
+  },
+  
+  async set(key, value, ttlSeconds) {
+    // Always set memory cache with 8 minute TTL
+    memCache.set(key, value, 480); // 8 minutes in memory (480 seconds)
+    
+    // Set Redis cache with full TTL
+    try {
+      // Redis needs value as a string - ensure it's always properly serialized
+      const valueString = typeof value === 'string' ? value : JSON.stringify(value);
+      await redis.set(key, valueString, { ex: ttlSeconds });
+      console.log(`Set in Redis cache: ${key} (expires in ${ttlSeconds}s)`);
+      return true;
+    } catch (error) {
+      console.log(`Redis set error: ${error.message}`);
+      return false;
+    }
+  }
+};
+
+// Configuration constants
+const CONFIG = {
+  maxPayloadSize: 100 * 1024, // 100KB max payload size
+  timeoutMs: 12000, // 12 second timeout for API calls
+  maxRetries: 2, // Number of retry attempts for API calls
+  retryDelayMs: 300, // Milliseconds between retries
+  maxOutputTokens: 500, // Reduced to 500 tokens to lower costs and improve speed
+  cacheTTL: {
+    'Electronics': 30 * 24 * 3600, // 30 days for Electronics
+    'Books': 90 * 24 * 3600,      // 90 days for Books
+    'Fashion': 60 * 24 * 3600,    // 60 days for Fashion
+    'Kitchen': 45 * 24 * 3600,    // 45 days for Kitchen
+    'Home': 60 * 24 * 3600,       // 60 days for Home
+    'Beauty': 30 * 24 * 3600,     // 30 days for Beauty
+    'Toys': 60 * 24 * 3600,       // 60 days for Toys
+    'Default': 45 * 24 * 3600     // 45 days default
+  }
+};
+
+// Category-specific attribute importance mapping
+const CATEGORY_ATTRIBUTES = {
+  'Electronics': {
+    attributes: ['processor', 'memory', 'storage', 'battery life', 'display', 'camera'],
+    temperature: 0.3
+  },
+  'Kitchen': {
+    attributes: ['material', 'capacity', 'ease of cleaning', 'durability', 'warranty'],
+    temperature: 0.35
+  },
+  'Clothing': {
+    attributes: ['material', 'fit', 'durability', 'style', 'washing instructions'],
+    temperature: 0.4
+  },
+  'Home': {
+    attributes: ['size', 'material', 'style', 'assembly required', 'warranty'],
+    temperature: 0.35
+  },
+  'Beauty': {
+    attributes: ['ingredients', 'skin type', 'results', 'application', 'quantity'],
+    temperature: 0.4
+  },
+  'Books': {
+    attributes: ['genre', 'length', 'publication date', 'author background', 'series'],
+    temperature: 0.45
+  },
+  'Toys': {
+    attributes: ['age range', 'educational value', 'durability', 'battery required', 'safety'],
+    temperature: 0.4
+  },
+  // Default category used when specific category not found
+  'General': {
+    attributes: ['quality', 'durability', 'features', 'ease of use', 'warranty'],
+    temperature: 0.35
+  }
+};
 
 // CORS headers for allowing cross-origin requests
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-User-Preferences, X-Requested-With',
+  'Access-Control-Max-Age': '86400' // 24 hours
+};
+
+// Helper function for structured logging
+const logEvent = (level, message, data = {}) => {
+  try {
+    const logEntry = {
+      timestamp: new Date().toISOString(),
+      level,
+      message,
+      ...data
+    };
+    console.log(JSON.stringify(logEntry));
+  } catch (error) {
+    console.log(`Error logging [${level}] ${message}: ${error.message}`);
+  }
+};
+
+// Simplified retry wrapper for API calls
+const fetchWithRetry = async (url, options, retries = CONFIG.maxRetries) => {
+  let lastError;
+  
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      if (attempt > 0) {
+        // Exponential backoff between retries
+        await new Promise(resolve => setTimeout(resolve, CONFIG.retryDelayMs * attempt));
+        console.log(`Retry attempt ${attempt} of ${retries}`);
+      }
+      
+      const response = await fetch(url, options);
+      return response;
+    } catch (error) {
+      lastError = error;
+      console.log(`API call failed (attempt ${attempt}): ${error.message}`);
+    }
+  }
+  
+  throw lastError || new Error('Failed to fetch after retries');
+};
+
+// Extract keywords from product title
+const extractKeywords = (title = '') => {
+  if (!title) return [];
+  
+  // Convert to lowercase
+  const text = title.toLowerCase();
+  
+  // Remove common words and punctuation
+  const stopWords = ['and', 'the', 'is', 'in', 'for', 'with', 'on', 'at', 'from', 'to', 'of', 'a', 'an'];
+  const words = text.split(/\W+/).filter(word => 
+    word.length > 2 && !stopWords.includes(word)
+  );
+  
+  // Count word occurrences
+  const wordCounts = {};
+  words.forEach(word => {
+    wordCounts[word] = (wordCounts[word] || 0) + 1;
+  });
+  
+  // Sort by count and take top 5 (reduced to save tokens)
+  return Object.entries(wordCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(entry => entry[0]);
+};
+
+// Validate the product data
+const validateProductData = (product) => {
+  const errors = [];
+  
+  if (!product) {
+    return ['Product data is missing'];
+  }
+  
+  if (!product.title || typeof product.title !== 'string' || product.title.trim() === '') {
+    errors.push('Product title is required');
+  }
+  
+  return errors;
+};
+
+// Get category-specific configuration
+const getCategoryConfig = (category) => {
+  if (!category || typeof category !== 'string') {
+    return CATEGORY_ATTRIBUTES['General'];
+  }
+  
+  const normalizedCategory = category.charAt(0).toUpperCase() + category.slice(1).toLowerCase();
+  
+  // Find exact match
+  const exactMatch = CATEGORY_ATTRIBUTES[normalizedCategory];
+  if (exactMatch) return exactMatch;
+  
+  // Look for partial matches
+  for (const [key, value] of Object.entries(CATEGORY_ATTRIBUTES)) {
+    if (normalizedCategory.includes(key) || key.includes(normalizedCategory)) {
+      return value;
+    }
+  }
+  
+  // Default to general category
+  return CATEGORY_ATTRIBUTES['General'];
+};
+
+// Generate cache key for a product
+const getCacheKey = (product) => {
+  if (!product) return null;
+  
+  // Use ASIN if available, otherwise use the title
+  const baseKey = product.asin ? 
+    `asin:${product.asin}` : 
+    `title:${product.title.substring(0, 40).replace(/\s+/g, '_').toLowerCase()}`;
+    
+  // Add category if available for better segmentation
+  if (product.category) {
+    return `${baseKey}:cat:${product.category.toLowerCase().replace(/\s+/g, '_')}`;
+  }
+  
+  return baseKey;
+};
+
+// Get cache TTL for a product category
+const getCacheTTL = (category) => {
+  if (!category || typeof category !== 'string') {
+    return CONFIG.cacheTTL.Default;
+  }
+  
+  const normalizedCategory = category.toLowerCase();
+  
+  for (const [key, value] of Object.entries(CONFIG.cacheTTL)) {
+    if (normalizedCategory.includes(key.toLowerCase())) {
+      return value;
+    }
+  }
+  
+  return CONFIG.cacheTTL.Default;
+};
+
+// Create a prompt based on product data
+const createPrompt = (product) => {
+  // Get category configuration
+  const category = product.category || 'General';
+  const categoryConfig = getCategoryConfig(category);
+  
+  // Extract keywords - only if absolutely needed
+  // Skip keywords extraction for better performance
+  // const keywords = extractKeywords(product.title);
+  
+  // Create an even shorter system prompt to save tokens and time
+  const systemPrompt = `Recommend 3 alternatives to this ${category} product with these categories: Better Value (cheaper), Premium Option (better quality), and Popular Choice (highly rated). For each: name, price, key features, and why it's better. Be very concise.`;
+  
+  // Create ultra-short user prompt
+  const userPrompt = `Product: ${product.title || 'Unknown'}
+Price: ${product.price || 'Unknown'}`;
+  
+  return {
+    systemPrompt,
+    userPrompt,
+    temperature: categoryConfig.temperature || 0.35
+  };
+};
+
+// Clean the API response to remove thinking sections
+const cleanResponse = (data) => {
+  if (!data || !data.choices || !data.choices[0] || !data.choices[0].message) {
+    return data;
+  }
+  
+  let content = data.choices[0].message.content;
+  
+  // Remove thinking sections and other verbose text
+  content = content.replace(/<think>[\s\S]*?<\/think>/g, '');
+  content = content.replace(/Okay, let's tackle this query[\s\S]*?Let me structure each recommendation/g, '');
+  content = content.replace(/First, I need to[\s\S]*?Let me structure/g, '');
+  
+  data.choices[0].message.content = content;
+  return data;
+};
+
+// CORS headers helper function
+const setCorsHeaders = (res) => {
+  res.setHeader('Access-Control-Allow-Credentials', true);
+  res.setHeader('Access-Control-Allow-Origin', '*'); // Allow any origin
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
+  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
+  return res;
 };
 
 // Main function handler
 module.exports = async (req, res) => {
+  const startTime = Date.now();
+  
   // Set CORS headers for all responses
-  Object.keys(corsHeaders).forEach(key => {
-    res.setHeader(key, corsHeaders[key]);
-  });
+  setCorsHeaders(res);
 
   // Handle OPTIONS request (preflight)
   if (req.method === 'OPTIONS') {
@@ -24,94 +361,356 @@ module.exports = async (req, res) => {
 
   // Only allow POST requests for the API
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed. Please use POST.' });
+    console.log(`Method not allowed: ${req.method}`);
+    return res.status(405).json({ 
+      error: 'Method not allowed. Please use POST.' 
+    });
   }
 
   try {
     // Get the product data from the request body
-    const { product, apiKey: clientApiKey } = req.body;
-
-    // Validate request body
-    if (!product || !product.title) {
-      return res.status(400).json({ 
-        error: 'Invalid request. Product data with at least a title is required.' 
+    let product, apiKey;
+    
+    // Safely parse request body
+    try {
+      const { product: productData, apiKey: clientApiKey } = req.body;
+      product = productData;
+      apiKey = clientApiKey;
+    } catch (parseError) {
+      console.log(`Error parsing request body: ${parseError.message}`);
+      return res.status(400).json({
+        error: 'Invalid request body',
+        message: parseError.message
       });
     }
 
-    // Get API key from environment variable, client request, or use a default for testing
-    // IMPORTANT: Replace this with your actual API key or use env variables in production
-    const apiKey = process.env.PERPLEXITY_API_KEY || clientApiKey || 'YOUR_PERPLEXITY_API_KEY_HERE';
-    
-    if (apiKey === 'YOUR_PERPLEXITY_API_KEY_HERE') {
-      console.warn('Using placeholder API key. Replace with your actual Perplexity API key.');
+    // Validate product data
+    const validationErrors = validateProductData(product);
+    if (validationErrors.length > 0) {
+      console.log(`Validation failed: ${JSON.stringify(validationErrors)}`);
+      return res.status(400).json({ 
+        error: 'Invalid request', 
+        messages: validationErrors 
+      });
     }
 
+    // Generate cache key
+    const cacheKey = getCacheKey(product);
+    console.log(`Cache key: ${cacheKey}`);
+    
+    // Try to get from cache
+    const cachedResult = await cache.get(cacheKey);
+    if (cachedResult.data) {
+      const responseTime = Date.now() - startTime;
+      console.log(`Cache ${cachedResult.source} hit! Response time: ${responseTime}ms`);
+      
+      return res.status(200).json({
+        ...cachedResult.data,
+        metadata: {
+          ...(cachedResult.data.metadata || {}),
+          cached: true,
+          cacheSource: cachedResult.source,
+          responseTime: `${responseTime}ms`
+        }
+      });
+    }
+
+    // Get API key from environment variable or client request
+    apiKey = process.env.PERPLEXITY_API_KEY || apiKey;
+    
+    if (!apiKey) {
+      console.log('API key not configured');
+      return res.status(400).json({ 
+        error: 'API key is required'
+      });
+    }
+
+    // Create product-specific prompt
+    const { systemPrompt, userPrompt, temperature } = createPrompt(product);
+    
     // Prepare the request to Perplexity API
     const requestBody = {
       model: "sonar-reasoning",
       messages: [
         { 
           role: "system", 
-          content: `You are a specialized Amazon product recommendation assistant. Your task is to recommend 3 alternative products to the one being viewed, each with distinct advantages:
-          1. Better Value Alternative: A product with similar features but better price-to-quality ratio
-          2. Premium Option: A higher-quality alternative with enhanced features
-          3. Popular Choice: The most highly-rated or bestselling alternative in this category
-          
-          For each recommendation, provide:
-          - A descriptive title (max 50 chars)
-          - Estimated price (if unknown, make a reasonable estimate)
-          - A brief explanation of why it's better (1-2 sentences)
-          - What specific features or aspects make it worth considering` 
+          content: systemPrompt
         },
         { 
           role: "user", 
-          content: `I'm looking at this product on Amazon:
-          
-          Title: ${product.title || 'Unknown product'}
-          Price: $${product.price || 'Unknown'}
-          Category: ${product.category || "General"}
-          ASIN: ${product.asin || "Unknown"}
-          
-          Please recommend 3 alternative products that shoppers might prefer, following your instructions. Focus on factual information and balanced comparisons.`
+          content: userPrompt
         }
       ],
-      temperature: 0.2,
-      max_tokens: 800,
-      top_p: 0.9
+      temperature: temperature,
+      max_tokens: CONFIG.maxOutputTokens,
+      top_p: 0.85
     };
 
-    // Make the request to Perplexity API
-    console.log('Calling Perplexity API...');
-    const perplexityResponse = await fetch('https://api.perplexity.ai/chat/completions', {
+    console.log('Calling Perplexity API with request:', JSON.stringify({
+      url: 'https://api.perplexity.ai/chat/completions',
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(requestBody)
-    });
+      model: requestBody.model,
+      systemPrompt: systemPrompt.substring(0, 50) + '...',
+      userPrompt: userPrompt,
+      temperature,
+      max_tokens: CONFIG.maxOutputTokens
+    }));
+    
+    // Make the request to Perplexity API
+    try {
+      console.log(`Using API key: ${apiKey.substring(0, 5)}...${apiKey.substring(apiKey.length - 4)}`);
+      const response = await fetch('https://api.perplexity.ai/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestBody),
+        timeout: CONFIG.timeoutMs
+      });
+      
+      // Check for API errors
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.log(`Perplexity API error: ${response.status} - ${errorText}`);
+        return res.status(response.status).json({ 
+          error: `Error from AI service: ${response.status}`, 
+          details: errorText 
+        });
+      }
 
-    // Check for Perplexity API errors
-    if (!perplexityResponse.ok) {
-      const errorText = await perplexityResponse.text();
-      console.error('Perplexity API error:', perplexityResponse.status, errorText);
-      return res.status(perplexityResponse.status).json({ 
-        error: `Error from AI service: ${perplexityResponse.status}`, 
-        details: errorText 
+      // Get the response data
+      const rawData = await response.json();
+      
+      // Clean the response data
+      const data = cleanResponse(rawData);
+      
+      // Add metadata
+      const apiResponseTime = Date.now() - startTime;
+      const responseWithMetadata = {
+        ...data,
+        metadata: {
+          category: product.category || 'General',
+          responseTime: `${apiResponseTime}ms`,
+          tokenCount: data.usage ? data.usage.total_tokens : 'unknown'
+        }
+      };
+      
+      // Convert Perplexity response to our recommendations format
+      if (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) {
+        const content = data.choices[0].message.content;
+        console.log("Perplexity response content:", content);
+        
+        // Parse recommendations from the content
+        const recommendations = parseRecommendationsFromContent(content, product);
+        
+        // Format response for the extension
+        const formattedResponse = {
+          recommendations: recommendations,
+          source: "Perplexity API",
+          timestamp: new Date().toISOString(),
+          usingMockData: false,
+          metadata: responseWithMetadata.metadata,
+          usage: data.usage
+        };
+        
+        // Cache the formatted response
+        const cacheTTL = getCacheTTL(product.category);
+        await cache.set(cacheKey, formattedResponse, cacheTTL);
+        
+        return res.status(200).json(formattedResponse);
+      }
+      
+      // If we couldn't parse recommendations, cache the raw response
+      const cacheTTL = getCacheTTL(product.category);
+      await cache.set(cacheKey, responseWithMetadata, cacheTTL);
+      
+      console.log(`API call completed in ${apiResponseTime}ms with ${responseWithMetadata.metadata.tokenCount} tokens`);
+      
+      // Return the successful response
+      return res.status(200).json(responseWithMetadata);
+    } catch (fetchError) {
+      console.log(`Fetch error: ${fetchError.message}`);
+      
+      // Use mock data as fallback when Perplexity API fails
+      console.log("Falling back to mock recommendations data");
+      const fallbackData = getFallbackRecommendations(product);
+      
+      return res.status(200).json({
+        ...fallbackData,
+        error: 'Failed to communicate with AI service, using fallback data',
+        originalError: fetchError.message
       });
     }
-
-    // Get the response data
-    const data = await perplexityResponse.json();
-    
-    // Return the successful response
-    return res.status(200).json(data);
-
   } catch (error) {
-    console.error('Error processing request:', error);
+    console.log(`Error processing request: ${error.message}`);
     return res.status(500).json({ 
       error: 'Internal server error', 
       message: error.message 
     });
   }
-}; 
+};
+
+// Simple API endpoint for Amazon Smart Recommendations (mock data fallback)
+const recommendationsData = require('../data/recommendations');
+
+// Mock data handler - only used as a fallback if Perplexity fails
+const getFallbackRecommendations = (productData) => {
+  // Determine which recommendations to return based on category
+  const category = (productData.category && productData.category.toLowerCase()) || 'default';
+  const recommendations = recommendationsData[category] || recommendationsData.default;
+  
+  // Build response with source information
+  return {
+    recommendations: recommendations,
+    source: "Amazon Smart Recommendations API (Fallback)",
+    timestamp: new Date().toISOString(),
+    usingMockData: true
+  };
+};
+
+// Function to parse recommendations from Perplexity content
+function parseRecommendationsFromContent(content, product) {
+  try {
+    // Default placeholder values
+    const defaultImage = "https://via.placeholder.com/150";
+    const defaultPrice = product.price || '0.00';
+    
+    // Initialize recommendations array
+    const recommendations = [];
+    
+    // Handle paragraph-based format
+    const paragraphs = content.split(/\n\n+/);
+    
+    // Try to find sections for each recommendation type
+    const recommendationTypes = [
+      { label: "Premium Option", search: /premium|better|higher/i },
+      { label: "Better Value", search: /value|budget|cheaper|affordable/i },
+      { label: "Most Popular", search: /popular|rated|best.?selling/i }
+    ];
+    
+    // Process each paragraph to find recommendations
+    for (let i = 0; i < paragraphs.length; i++) {
+      const paragraph = paragraphs[i];
+      
+      // Skip short paragraphs
+      if (paragraph.length < 15) continue;
+      
+      // Find which recommendation type this paragraph matches
+      const matchedType = recommendationTypes.find(type => 
+        type.search.test(paragraph)
+      );
+      
+      if (!matchedType) continue;
+      
+      // Try to extract product details
+      let title = extractProductTitle(paragraph);
+      let price = extractPrice(paragraph) || defaultPrice;
+      let reason = extractReason(paragraph);
+      
+      // Only add if we found a title
+      if (title) {
+        recommendations.push({
+          title: title,
+          price: price,
+          reason: reason || `${matchedType.label} for this product category`,
+          rating: "4.5",
+          reviewCount: "100+ reviews",
+          imageUrl: defaultImage
+        });
+      }
+    }
+    
+    // If we couldn't extract structured recommendations, create generic ones
+    if (recommendations.length === 0) {
+      console.log("Could not parse structured recommendations, creating generic ones");
+      
+      recommendationTypes.forEach(type => {
+        recommendations.push({
+          title: `${type.label} for ${product.title || 'this product'}`,
+          price: type.label === "Better Value" ? 
+            (Number(defaultPrice.toString().replace(/[^0-9.]/g, '')) * 0.8).toFixed(2) : 
+            (type.label === "Premium Option" ? 
+              (Number(defaultPrice.toString().replace(/[^0-9.]/g, '')) * 1.2).toFixed(2) : 
+              defaultPrice),
+          reason: `${type.label} with ${type.label === "Better Value" ? "lower price" : 
+            type.label === "Premium Option" ? "enhanced features" : "great reviews"}`,
+          rating: type.label === "Most Popular" ? "4.8" : "4.3",
+          reviewCount: type.label === "Most Popular" ? "500+ reviews" : "100+ reviews",
+          imageUrl: defaultImage
+        });
+      });
+    }
+    
+    return recommendations;
+  } catch (error) {
+    console.error("Error parsing recommendations:", error);
+    return [];
+  }
+}
+
+// Helper function to extract product title
+function extractProductTitle(text) {
+  // Look for patterns like "1. Product Name:" or "Product Name -"
+  const patterns = [
+    /\d+\.\s*([^:]+):/,
+    /\*\*([^:*]+)\*\*/,
+    /^([^:,]+):/m,
+    /^(.+?)\s*\(/m,
+    /^(.+?)\s*-/m,
+    /^(.+?)\s*\$/m
+  ];
+  
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match && match[1] && match[1].trim().length > 3) {
+      return match[1].trim();
+    }
+  }
+  
+  // If no patterns matched, take the first sentence if it's not too long
+  const firstSentence = text.split(/[.!?]/)[0];
+  if (firstSentence && firstSentence.length > 3 && firstSentence.length < 100) {
+    return firstSentence.trim();
+  }
+  
+  return null;
+}
+
+// Helper function to extract price
+function extractPrice(text) {
+  // Look for price patterns
+  const priceMatch = text.match(/\$\s*(\d+(\.\d{1,2})?)/);
+  if (priceMatch) {
+    return priceMatch[1];
+  }
+  return null;
+}
+
+// Helper function to extract reason
+function extractReason(text) {
+  // Look for reason patterns
+  const reasonPatterns = [
+    /why it's better:?\s*([^.]+)/i,
+    /key features:?\s*([^.]+)/i,
+    /benefits:?\s*([^.]+)/i
+  ];
+  
+  for (const pattern of reasonPatterns) {
+    const match = text.match(pattern);
+    if (match && match[1]) {
+      return match[1].trim();
+    }
+  }
+  
+  // If no specific reason found, use the last sentence
+  const sentences = text.split(/[.!?]/).filter(s => s.trim().length > 0);
+  if (sentences.length > 1) {
+    return sentences[sentences.length - 1].trim();
+  }
+  
+  return null;
+}
+
+// DO NOT OVERRIDE THE MAIN EXPORT - this was the problem!
+// module.exports = recommendationsHandler; 

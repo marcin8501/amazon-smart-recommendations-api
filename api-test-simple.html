@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Cache Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .container { border: 1px solid #ccc; padding: 15px; margin-bottom: 20px; border-radius: 5px; }
+        button { background-color: #4CAF50; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; }
+        pre { background-color: #f5f5f5; padding: 10px; border-radius: 5px; overflow: auto; max-height: 300px; }
+        .status { margin: 10px 0; font-weight: bold; }
+        .error { color: red; }
+        .success { color: green; }
+        .result { margin-top: 15px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        .timer { font-size: 1.5em; font-weight: bold; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <h1>API Caching Test</h1>
+    
+    <div class="container">
+        <h2>API Configuration</h2>
+        <input type="text" id="apiUrl" value="https://amazon-smart-recommendations-hoi29sblt-marcin8501s-projects.vercel.app/api/recommendations" style="width: 100%; padding: 8px; margin-bottom: 10px;">
+        <input type="text" id="apiKey" value="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" style="width: 100%; padding: 8px;">
+    </div>
+    
+    <div class="container">
+        <h2>Test Product</h2>
+        <select id="productSelect" style="width: 100%; padding: 8px; margin-bottom: 10px;">
+            <option value="sony">Sony WH-1000XM4 Headphones</option>
+            <option value="kindle">Kindle Paperwhite</option>
+            <option value="airpods">Apple AirPods Pro</option>
+            <option value="macbook">MacBook Pro 16-inch</option>
+        </select>
+        <pre id="productData">{
+  "product": {
+    "title": "Sony WH-1000XM4 Wireless Noise Cancelling Headphones",
+    "price": "299.99",
+    "category": "Electronics",
+    "asin": "B0863TXGM3"
+  }
+}</pre>
+    </div>
+    
+    <div class="container">
+        <h2>Cache Testing</h2>
+        <p>First request should be slow (API call). Second request should be fast (cached).</p>
+        <button id="testBtn">Test Request #1</button>
+        <button id="test2Btn" disabled>Test Request #2</button>
+        <div class="timer" id="timer">0.00s</div>
+        <div id="status" class="status">Ready to test</div>
+    </div>
+    
+    <div class="container">
+        <h2>Results</h2>
+        <table id="resultsTable">
+            <tr>
+                <th>Request</th>
+                <th>Time</th>
+                <th>Cached?</th>
+                <th>Source</th>
+                <th>Tokens</th>
+            </tr>
+            <tr>
+                <td>-</td>
+                <td>-</td>
+                <td>-</td>
+                <td>-</td>
+                <td>-</td>
+            </tr>
+            <tr>
+                <td>-</td>
+                <td>-</td>
+                <td>-</td>
+                <td>-</td>
+                <td>-</td>
+            </tr>
+        </table>
+    </div>
+    
+    <div class="container">
+        <h2>Response Details</h2>
+        <pre id="result">No response yet</pre>
+    </div>
+
+    <script>
+        // Product data
+        const products = {
+            sony: {
+                product: {
+                    title: "Sony WH-1000XM4 Wireless Noise Cancelling Headphones",
+                    price: "299.99",
+                    category: "Electronics",
+                    asin: "B0863TXGM3"
+                }
+            },
+            kindle: {
+                product: {
+                    title: "Kindle Paperwhite (8 GB) – Now with a 6.8\" display and adjustable warm light",
+                    price: "139.99",
+                    category: "Electronics",
+                    asin: "B08KTZ8249"
+                }
+            },
+            airpods: {
+                product: {
+                    title: "Apple AirPods Pro (2nd Generation) Wireless Ear Buds with USB-C",
+                    price: "249.99",
+                    category: "Electronics",
+                    asin: "B0CHWRXH1H"
+                }
+            },
+            macbook: {
+                product: {
+                    title: "Apple 2023 MacBook Pro Laptop M3 Pro chip",
+                    price: "1999.99",
+                    category: "Electronics",
+                    asin: "B0CM5L7KYM"
+                }
+            }
+        };
+        
+        // Update product data when selection changes
+        document.getElementById('productSelect').addEventListener('change', function() {
+            const product = products[this.value];
+            document.getElementById('productData').textContent = JSON.stringify(product, null, 2);
+        });
+        
+        // Timer variables
+        let startTime;
+        let timerInterval;
+        
+        // Start timer
+        function startTimer() {
+            startTime = new Date().getTime();
+            document.getElementById('timer').textContent = '0.00s';
+            
+            timerInterval = setInterval(() => {
+                const now = new Date().getTime();
+                const duration = (now - startTime) / 1000;
+                document.getElementById('timer').textContent = `${duration.toFixed(2)}s`;
+            }, 10);
+        }
+        
+        // Stop timer
+        function stopTimer() {
+            clearInterval(timerInterval);
+            const duration = (new Date().getTime() - startTime) / 1000;
+            return duration.toFixed(2);
+        }
+        
+        // Update results table
+        function updateResults(requestNum, time, cached, source, tokens) {
+            const table = document.getElementById('resultsTable');
+            const row = table.rows[requestNum];
+            
+            row.cells[0].textContent = `Request #${requestNum}`;
+            row.cells[1].textContent = `${time}s`;
+            row.cells[2].textContent = cached ? 'Yes' : 'No';
+            row.cells[3].textContent = source || '-';
+            row.cells[4].textContent = tokens || '-';
+            
+            // Highlight row based on cache status
+            row.style.backgroundColor = cached ? '#e6ffe6' : 'white';
+        }
+        
+        // Make API request
+        async function makeRequest(requestNum) {
+            const statusElem = document.getElementById('status');
+            const resultElem = document.getElementById('result');
+            
+            const apiUrl = document.getElementById('apiUrl').value.trim();
+            if (!apiUrl) {
+                alert('Please enter API URL');
+                return;
+            }
+            
+            const apiKey = document.getElementById('apiKey').value.trim();
+            if (!apiKey) {
+                alert('Please enter API key');
+                return;
+            }
+            
+            try {
+                // Parse product data
+                const productKey = document.getElementById('productSelect').value;
+                const data = products[productKey];
+                data.apiKey = apiKey;
+                
+                // Update status
+                statusElem.textContent = `Sending request #${requestNum}...`;
+                statusElem.className = 'status';
+                resultElem.textContent = 'Waiting for response...';
+                
+                // Start timing
+                startTimer();
+                
+                // Make the API call
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(data)
+                });
+                
+                const duration = stopTimer();
+                
+                // Get response data
+                const responseData = await response.json();
+                
+                // Update UI
+                if (response.ok) {
+                    statusElem.textContent = `Request #${requestNum} successful (${duration}s)`;
+                    statusElem.className = 'status success';
+                    resultElem.textContent = JSON.stringify(responseData, null, 2).substring(0, 2000) + '...';
+                    
+                    // Check for cache info
+                    const isCached = responseData.metadata && responseData.metadata.cached;
+                    const cacheSource = isCached ? responseData.metadata.cacheSource : null;
+                    const tokens = responseData.usage ? responseData.usage.total_tokens : null;
+                    
+                    // Update results table
+                    updateResults(requestNum, duration, isCached, cacheSource, tokens);
+                    
+                    // Enable second test button after first request
+                    if (requestNum === 1) {
+                        document.getElementById('test2Btn').disabled = false;
+                    }
+                    
+                } else {
+                    statusElem.textContent = `Error: ${response.status} - ${response.statusText}`;
+                    statusElem.className = 'status error';
+                    resultElem.textContent = JSON.stringify(responseData, null, 2);
+                }
+            } catch (error) {
+                stopTimer();
+                statusElem.textContent = `Error: ${error.message}`;
+                statusElem.className = 'status error';
+                resultElem.textContent = error.toString();
+            }
+        }
+        
+        // Button click handlers
+        document.getElementById('testBtn').addEventListener('click', () => makeRequest(1));
+        document.getElementById('test2Btn').addEventListener('click', () => makeRequest(2));
+    </script>
+</body>
+</html> 

@@ -287,7 +287,7 @@ if (window.location.hostname.includes('amazon')) {
                     
                     <h3>API Information:</h3>
                     <div class="api-info">
-                        <p><strong>API URL:</strong> <span id="api-url">https://amazon-smart-recommendations-hoi29sblt-marcin8501s-projects.vercel.app/api/recommendations</span></p>
+                        <p><strong>API URL:</strong> <span id="api-url">https://amazon-smart-recommendations-9re1orbea-marcin8501s-projects.vercel.app/api/recommendations</span></p>
                         <p><strong>Connection Status:</strong> <span id="api-status">Testing...</span></p>
                         <p><strong>Data Source:</strong> <span id="data-source">Unknown</span></p>
                     </div>
@@ -586,13 +586,13 @@ ${typeof result.response === 'object' ? JSON.stringify(result.response, null, 2)
     // Open the API test tool in a new tab
     document.getElementById('open-api-test-btn').addEventListener('click', () => {
         window.open(
-            'https://amazon-smart-recommendations-hoi29sblt-marcin8501s-projects.vercel.app/api-test.html',
+            'https://amazon-smart-recommendations-9re1orbea-marcin8501s-projects.vercel.app/api-test.html',
             '_blank'
         );
     });
 
     // Find and update any API URL references
-    document.getElementById('api-url').textContent = "https://amazon-smart-recommendations-hoi29sblt-marcin8501s-projects.vercel.app/api/recommendations";
+    document.getElementById('api-url').textContent = "https://amazon-smart-recommendations-9re1orbea-marcin8501s-projects.vercel.app/api/recommendations";
 }
   
   // Update panel content with product info and recommendations

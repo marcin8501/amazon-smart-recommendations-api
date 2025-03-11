@@ -29,7 +29,7 @@ module.exports = async (req, res) => {
 
   try {
     // Get the product data from the request body
-    const { product } = req.body;
+    const { product, apiKey: clientApiKey } = req.body;
 
     // Validate request body
     if (!product || !product.title) {
@@ -38,9 +38,9 @@ module.exports = async (req, res) => {
       });
     }
 
-    // Get API key from environment variable or use a default for testing
+    // Get API key from environment variable, client request, or use a default for testing
     // IMPORTANT: Replace this with your actual API key or use env variables in production
-    const apiKey = process.env.PERPLEXITY_API_KEY || 'YOUR_PERPLEXITY_API_KEY_HERE';
+    const apiKey = process.env.PERPLEXITY_API_KEY || clientApiKey || 'YOUR_PERPLEXITY_API_KEY_HERE';
     
     if (apiKey === 'YOUR_PERPLEXITY_API_KEY_HERE') {
       console.warn('Using placeholder API key. Replace with your actual Perplexity API key.');

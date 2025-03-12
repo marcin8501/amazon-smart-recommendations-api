@@ -1,228 +1,158 @@
-// Amazon Smart Recommendations Extension - Background Script v3.0.1
-// Handles API communication and data processing
+// Amazon Smart Recommendations - Background Script
+// This script handles communication between content script and API
 
-console.log('Amazon Smart Recommendations Extension - Background Script v3.0.2 Starting');
+// API endpoint URL - updated to use Gemini API
+const API_ENDPOINT = "https://amazon-smart-recommendations-api.vercel.app/api/gemini";
+// const API_ENDPOINT = "https://amazon-smart-recommendations-api.vercel.app/api/recommendations"; // Old Perplexity endpoint
 
-// API Configuration
-const API_URL = "https://amazon-smart-recommendations-hoi29sblt-marcin8501s-projects.vercel.app/api/recommendations";
-const CORS_PROXIES = [
-  "https://cors-anywhere.herokuapp.com/",
-  "https://api.allorigins.win/raw?url=",
-  "https://cors-proxy.htmldriven.com/?url=",
-  "https://corsproxy.io/?"
-];
+// Fallback test mode setting
+const TEST_MODE = false;
 
-// Cache configuration
-const CACHE_EXPIRATION = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
-const cache = new Map();
+// In-memory cache for recommendations
+const recommendationsCache = new Map();
 
-// Initialize extension when installed
+// Settings with default values
+let settings = {
+  autoShow: true,
+  maxRecommendations: 3,
+  priority: 'price', // 'price', 'ratings', or 'features'
+  theme: 'light',
+  animationSpeed: 'normal',
+  apiKey: '' // User can provide their own Google API key
+};
+
+// Initialize
 chrome.runtime.onInstalled.addListener(() => {
-  console.log('Extension installed');
+  console.log("Amazon Smart Recommendations extension installed");
+  
+  // Load settings from storage
+  loadSettings();
 });
 
-// Listen for content script messages
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.action === "getRecommendations") {
-    console.log("Background: Received request for recommendations", message.productData);
-    
-    // Process product data from content script
-    const productData = message.productData || {};
-    
-    // Get recommendations from API
-    getRecommendationsFromAPI(productData)
-      .then(data => {
-        console.log("Background: Recommendations fetched successfully", data);
-        sendResponse({ success: true, data });
-      })
-      .catch(error => {
-        console.error("Background: Error fetching recommendations", error);
-        sendResponse({ 
-          success: false, 
-          error: error.message,
-          usingMockData: true
-        });
-      });
-    
-    // Return true to indicate we will send an async response
-    return true;
-  }
+// Load settings from chrome storage
+function loadSettings() {
+  chrome.storage.local.get('amazonSmartRecsSettings', (result) => {
+    if (result.amazonSmartRecsSettings) {
+      settings = { ...settings, ...result.amazonSmartRecsSettings };
+      console.log("Loaded settings:", settings);
+    } else {
+      // Save default settings if none exist
+      saveSettings();
+    }
+  });
+}
+
+// Save settings to chrome storage
+function saveSettings() {
+  chrome.storage.local.set({ 'amazonSmartRecsSettings': settings }, () => {
+    console.log("Saved settings:", settings);
+  });
+}
+
+// Clear recommendations cache
+function clearCache() {
+  recommendationsCache.clear();
+  console.log("Cache cleared");
+}
+
+// Listen for messages from content script
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  console.log("Background received message:", request.action);
   
-  if (message.action === "testAPIConnection") {
-    console.log("Background: Testing API connection");
-    
-    // Simple test request to the API
-    testAPIConnection()
-      .then(result => {
-        console.log("Background: API test completed", result);
-        sendResponse(result);
-      })
-      .catch(error => {
-        console.error("Background: API test failed", error);
-        sendResponse({ 
-          success: false, 
-          error: error.message,
-          connected: false
+  // Handle different message types
+  switch (request.action) {
+    case 'getRecommendations':
+      getRecommendations(request.product)
+        .then(data => {
+          sendResponse({ success: true, data });
+        })
+        .catch(error => {
+          console.error("Error fetching recommendations:", error);
+          sendResponse({ success: false, error: error.message });
         });
-      });
-    
-    // Return true to indicate we will send an async response
-    return true;
+      return true; // Keep channel open for async response
+      
+    case 'getSettings':
+      sendResponse({ success: true, settings });
+      return false;
+      
+    case 'saveSettings':
+      settings = { ...settings, ...request.settings };
+      saveSettings();
+      sendResponse({ success: true });
+      return false;
+      
+    case 'clearCache':
+      clearCache();
+      sendResponse({ success: true });
+      return false;
+      
+    default:
+      console.log("Unknown action:", request.action);
+      sendResponse({ success: false, error: 'Unknown action' });
+      return false;
   }
 });
 
-// Function to fetch recommendations from the API
-async function getRecommendationsFromAPI(productData) {
-  console.log("Attempting to fetch recommendations from API:", API_URL);
-  
+// Fetch recommendations from API or cache
+async function getRecommendations(product) {
   try {
-    // Attempt direct API call first without problematic headers
-    console.log("Trying direct API call without X-Requested-With header...");
-    const response = await fetch(API_URL, {
+    console.log("Getting recommendations for:", product);
+    
+    // Check if we have a valid product object
+    if (!product || !product.title) {
+      throw new Error('Invalid product data');
+    }
+    
+    // Create cache key from product ASIN or title
+    const cacheKey = product.asin || product.title.substring(0, 50).toLowerCase().replace(/\s+/g, '_');
+    
+    // Check cache first
+    if (recommendationsCache.has(cacheKey)) {
+      const cachedData = recommendationsCache.get(cacheKey);
+      console.log("Cache hit! Using cached recommendations");
+      return { ...cachedData, cached: true };
+    }
+    
+    // Include API key if available in settings
+    const apiKey = settings.apiKey || '';
+    
+    // Call API with product data
+    const response = await fetch(API_ENDPOINT, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
-        // Removed X-Requested-With header that was causing CORS issues
+        'Content-Type': 'application/json',
+        'X-User-Preferences': JSON.stringify({
+          priority: settings.priority,
+          maxRecommendations: settings.maxRecommendations
+        })
       },
-      body: JSON.stringify(productData),
+      body: JSON.stringify({ 
+        product,
+        apiKey // Pass the API key if the user has provided one
+      })
     });
     
-    // Check if response is ok
     if (!response.ok) {
-      console.error(`Direct API call failed with status: ${response.status}`);
-      throw new Error(`Direct API call failed with status: ${response.status}`);
+      console.error(`API error: ${response.status}`);
+      
+      // Try to get error details from response
+      const errorText = await response.text();
+      throw new Error(`API returned ${response.status}: ${errorText}`);
     }
     
-    // Parse the response
-    const data = await response.json();
-    console.log("API response received:", data);
-    
-    // Validate response format
-    if (!data.recommendations || !Array.isArray(data.recommendations)) {
-      console.error("Invalid API response format:", data);
-      throw new Error("Invalid API response format: missing recommendations array");
-    }
-    
-    return {
-      recommendations: data.recommendations,
-      source: data.source || "API",
-      usingMockData: data.usingMockData || false,
-      apiConnected: true
-    };
-  } catch (directError) {
-    console.error("Direct API call failed:", directError);
-    
-    // Try each CORS proxy in sequence
-    for (const proxy of CORS_PROXIES) {
-      try {
-        console.log(`Trying CORS proxy: ${proxy}`);
-        let proxyUrl, requestOptions;
-        
-        // Different handling for different proxy formats
-        if (proxy.includes('allorigins')) {
-          proxyUrl = `${proxy}${encodeURIComponent(API_URL)}`;
-          requestOptions = {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(productData)
-          };
-        } else if (proxy.includes('htmldriven')) {
-          proxyUrl = `${proxy}${encodeURIComponent(API_URL)}`;
-          requestOptions = {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(productData)
-          };
-        } else {
-          // Standard proxy format
-          proxyUrl = `${proxy}${API_URL}`;
-          requestOptions = {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Requested-With': 'XMLHttpRequest'
-            },
-            body: JSON.stringify(productData)
-          };
-        }
-        
-        const proxyResponse = await fetch(proxyUrl, requestOptions);
-        
-        if (!proxyResponse.ok) {
-          throw new Error(`Proxy request failed with status: ${proxyResponse.status}`);
-        }
-        
-        const proxyData = await proxyResponse.json();
-        
-        // Validate response format
-        if (!proxyData.recommendations || !Array.isArray(proxyData.recommendations)) {
-          throw new Error("Invalid proxy API response format");
-        }
-        
-        return {
-          recommendations: proxyData.recommendations,
-          source: proxyData.source || "API via proxy",
-          usingMockData: proxyData.usingMockData || false,
-          apiConnected: true,
-          usedProxy: proxy
-        };
-      } catch (proxyError) {
-        console.error(`CORS proxy ${proxy} failed:`, proxyError);
-        // Continue to next proxy
-      }
-    }
-    
-    // If all API attempts failed, throw the original error
-    throw new Error(`Could not connect to the recommendations API: ${directError.message}`);
-  }
-}
-
-// Function to test API connection
-async function testAPIConnection() {
-  try {
-    // Test direct connection first
-    console.log("Testing direct API connection...");
-    const startTime = Date.now();
-    
-    const response = await fetch(API_URL, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json'
-        // Removed X-Requested-With header that was causing CORS issues
-      }
-    });
-    
-    const duration = Date.now() - startTime;
-    
-    if (!response.ok) {
-      throw new Error(`Direct API call failed with status: ${response.status}`);
-    }
-    
+    // Parse API response
     const data = await response.json();
     
-    return {
-      success: true,
-      connected: true,
-      method: 'direct',
-      status: response.status,
-      duration: `${duration}ms`,
-      responseData: data,
-      recommendations: data.recommendations || []
-    };
+    // Cache the results (unless they're mock data)
+    if (!data.usingMockData) {
+      recommendationsCache.set(cacheKey, data);
+      console.log("Cached recommendations for:", cacheKey);
+    }
+    
+    return data;
   } catch (error) {
-    console.error("API connection test failed:", error);
-    
-    return {
-      success: false,
-      connected: false,
-      error: error.message,
-      recommendations: []
-    };
+    console.error("Error in getRecommendations:", error);
+    throw error;
   }
-}
-
-console.log('Amazon Smart Recommendations Extension - Background Script v3.0.2 Ready'); 
+} 

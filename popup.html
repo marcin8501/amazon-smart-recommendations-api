@@ -1,89 +1,277 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="utf-8">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Amazon Smart Recommendations</title>
   <style>
-    body {
-      width: 300px;
-      padding: 15px;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    :root {
+      --primary-color: #1a73e8;
+      --secondary-color: #5f6368;
+      --background-color: #ffffff;
+      --surface-color: #f8f9fa;
+      --error-color: #d93025;
+      --success-color: #0f9d58;
+      --text-color: #202124;
+      --text-secondary-color: #5f6368;
+      --border-color: #dadce0;
+      --shadow-color: rgba(0, 0, 0, 0.1);
     }
-    h1 {
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      width: 340px;
+      margin: 0;
+      padding: 0;
+      background-color: var(--background-color);
+      color: var(--text-color);
+    }
+
+    .header {
+      background-color: var(--primary-color);
+      color: white;
+      padding: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .header h1 {
       font-size: 16px;
-      color: #232F3E; /* Amazon dark blue */
-      margin-top: 0;
-      margin-bottom: 10px;
+      margin: 0;
+      font-weight: 500;
+    }
+
+    .logo {
       display: flex;
       align-items: center;
     }
-    h1 img {
+
+    .logo img {
       width: 24px;
       height: 24px;
       margin-right: 8px;
     }
-    .description {
-      font-size: 14px;
-      color: #555;
-      margin-bottom: 15px;
-    }
-    .status {
-      font-size: 14px;
-      margin-bottom: 15px;
-      padding: 10px;
-      background-color: #f8f8f8;
-      border-radius: 4px;
-    }
-    .status.active {
-      background-color: #E7F4E8;
-      color: #2E7D32;
-    }
-    .footer {
+
+    .version {
       font-size: 12px;
-      color: #888;
-      margin-top: 15px;
-      padding-top: 10px;
-      border-top: 1px solid #eee;
-      text-align: center;
+      opacity: 0.8;
     }
-    .highlight {
-      color: #f97316; /* Orange */
+
+    .content {
+      padding: 16px;
+    }
+
+    .settings-group {
+      margin-bottom: 20px;
+    }
+
+    .settings-group h2 {
+      font-size: 14px;
+      margin: 0 0 12px 0;
+      color: var(--text-color);
       font-weight: 500;
     }
-    .feature-list {
-      font-size: 13px;
-      margin: 15px 0;
+
+    .setting-item {
+      margin-bottom: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
     }
-    .feature-list li {
-      margin-bottom: 6px;
+
+    .setting-label {
+      font-size: 14px;
+    }
+
+    .setting-item p {
+      margin: 4px 0 0 0;
+      font-size: 12px;
+      color: var(--text-secondary-color);
+    }
+
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 40px;
+      height: 20px;
+    }
+
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #ccc;
+      transition: .3s;
+      border-radius: 20px;
+    }
+
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 16px;
+      width: 16px;
+      left: 2px;
+      bottom: 2px;
+      background-color: white;
+      transition: .3s;
+      border-radius: 50%;
+    }
+
+    input:checked + .slider {
+      background-color: var(--primary-color);
+    }
+
+    input:checked + .slider:before {
+      transform: translateX(20px);
+    }
+
+    .api-key-input {
+      width: 100%;
+      padding: 8px;
+      margin-top: 8px;
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+
+    select {
+      padding: 6px 10px;
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      background-color: var(--background-color);
+      font-size: 14px;
+    }
+
+    .btn {
+      background-color: var(--primary-color);
+      color: white;
+      border: none;
+      border-radius: 4px;
+      padding: 8px 16px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+
+    .btn:hover {
+      background-color: #0d66d0;
+    }
+
+    .btn-secondary {
+      background-color: var(--surface-color);
+      color: var(--text-color);
+      border: 1px solid var(--border-color);
+    }
+
+    .btn-secondary:hover {
+      background-color: #f1f3f4;
+    }
+
+    .actions {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 20px;
+      border-top: 1px solid var(--border-color);
+      padding-top: 16px;
+    }
+
+    .field-description {
+      font-size: 12px;
+      color: var(--text-secondary-color);
+      margin-top: 4px;
+    }
+
+    .status {
+      font-size: 12px;
+      padding: 8px 0;
+      text-align: center;
+    }
+
+    .status.success {
+      color: var(--success-color);
+    }
+
+    .status.error {
+      color: var(--error-color);
     }
   </style>
 </head>
 <body>
-  <h1>
-    <span class="highlight">Amazon</span> Smart Recommendations
-  </h1>
-  
-  <div class="description">
-    Get AI-powered product recommendations while shopping on Amazon.
+  <div class="header">
+    <div class="logo">
+      <img src="icons/icon48.png" alt="Logo">
+      <h1>Amazon Smart Recommendations</h1>
+    </div>
+    <span class="version">v3.1.0</span>
   </div>
-  
-  <div class="status active">
-    Extension is active! Visit an Amazon product page to see smart recommendations.
-  </div>
-  
-  <div class="feature-list">
-    <strong>What's New in v2.0:</strong>
-    <ul>
-      <li>Improved stability and reliability</li>
-      <li>Better product information extraction</li>
-      <li>Enhanced UI with detailed product information</li>
-      <li>Simple toggle button to show/hide recommendations</li>
-    </ul>
-  </div>
-  
-  <div class="footer">
-    Version 2.0 - Standalone Edition
+
+  <div class="content">
+    <div class="settings-group">
+      <h2>AI Recommendation Settings</h2>
+      
+      <div class="setting-item">
+        <div>
+          <div class="setting-label">Google API Key</div>
+          <input type="password" id="apiKey" class="api-key-input" placeholder="Enter your Google API key (optional)">
+          <div class="field-description">Use your own Google API key for Gemini-powered recommendations</div>
+        </div>
+      </div>
+
+      <div class="setting-item">
+        <div class="setting-label">Number of recommendations</div>
+        <select id="maxRecommendations">
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3" selected>3</option>
+          <option value="4">4</option>
+          <option value="5">5</option>
+        </select>
+      </div>
+
+      <div class="setting-item">
+        <div class="setting-label">Priority</div>
+        <select id="priority">
+          <option value="price" selected>Price</option>
+          <option value="ratings">Ratings</option>
+          <option value="features">Features</option>
+        </select>
+      </div>
+
+      <div class="setting-item">
+        <div class="setting-label">Show automatically</div>
+        <label class="switch">
+          <input type="checkbox" id="autoShow" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div class="setting-item">
+        <div class="setting-label">Theme</div>
+        <select id="theme">
+          <option value="light" selected>Light</option>
+          <option value="dark">Dark</option>
+          <option value="system">Match system</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="status" class="status"></div>
+
+    <div class="actions">
+      <button id="clearCache" class="btn btn-secondary">Clear Cache</button>
+      <button id="saveSettings" class="btn">Save Settings</button>
+    </div>
   </div>
 
   <script src="popup.js"></script>

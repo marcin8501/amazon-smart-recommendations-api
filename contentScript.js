@@ -106,167 +106,260 @@ if (window.location.hostname.includes('amazon')) {
     return '$' + parseFloat(price).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   }
   
-  // Extract product information from the page
-  function extractProductData() {
+  // Display recommendations in the UI
+  function displayRecommendations(recommendations, metadata = {}) {
+    const recommendationsContainer = document.getElementById('amazon-smart-recommendations-list');
+    
+    if (!recommendationsContainer) {
+      console.error('Recommendations container not found');
+      return;
+    }
+    
+    // Clear existing recommendations
+    recommendationsContainer.innerHTML = '';
+    
+    // Sort recommendations if needed based on extension settings
+    // For now, we'll just display them as they come from the API
+    
+    // Check if we have recommendations to display
+    if (!recommendations || recommendations.length === 0) {
+      recommendationsContainer.innerHTML = '<p class="no-recommendations">No recommendations available</p>';
+      return;
+    }
+    
+    // Category labels for the recommendations
+    const categoryLabels = [
+      'Premium Alternative',
+      'Best Value Option', 
+      'Most Popular Choice'
+    ];
+    
+    // Display each recommendation
+    recommendations.slice(0, 3).forEach((item, index) => {
+      // Clean up title if needed (remove excessive whitespace, etc.)
+      const cleanTitle = item.title.replace(/\s+/g, ' ').trim();
+      
+      // Use type if available, otherwise fall back to category label
+      const categoryLabel = item.type || categoryLabels[index % categoryLabels.length];
+      
+      // Create HTML for the recommendation
+      const recommendationHTML = `
+        <div class="amazon-smart-recommendation">
+          <div class="recommendation-category">${categoryLabel}</div>
+          <div class="recommendation-content">
+            <div class="recommendation-image">
+              <img src="${item.imageUrl || 'https://via.placeholder.com/80'}" alt="${cleanTitle}">
+            </div>
+            <div class="recommendation-details">
+              <h4>${cleanTitle}</h4>
+              <div class="recommendation-price">$${item.price}</div>
+              ${item.rating ? `<div class="recommendation-rating">
+                ${item.rating} ★ ${item.reviewCount ? `<span class="review-count">(${item.reviewCount})</span>` : ''}
+              </div>` : ''}
+              <p class="recommendation-reason">${item.reason || 'Alternative product recommendation'}</p>
+            </div>
+          </div>
+          <a href="${item.affiliateLink || '#'}" class="recommendation-link" target="_blank">View on Amazon</a>
+        </div>
+      `;
+      
+      // Add the HTML to the container
+      recommendationsContainer.innerHTML += recommendationHTML;
+    });
+    
+    // Update footer text to show data source
+    const footer = document.querySelector('.amazon-smart-recommendations-footer');
+    if (footer) {
+      const usingMockData = metadata.usingMockData;
+      const source = metadata.source || 'Google Gemini';
+      
+      if (usingMockData) {
+        footer.innerHTML = '⚠️ Using simulated recommendations';
+      } else if (metadata.cached) {
+        footer.innerHTML = '📊 Showing cached recommendations';
+      } else if (source.includes('Gemini')) {
+        footer.innerHTML = '✨ Real recommendations from Google Gemini AI';
+      } else {
+        footer.innerHTML = '✨ Smart product recommendations';
+      }
+    }
+    
+    // Set up click listeners for the links
+    setupLinkTracking();
+  }
+
+  // Extract product details from Amazon page
+  function extractProductDetails() {
     try {
-      // Extract ASIN from URL
-      let asin = null;
-      try {
-        const match = window.location.pathname.match(/\/(?:dp|gp\/product)\/([A-Z0-9]{10})/);
-        asin = match ? match[1] : null;
-      } catch (e) {
-        console.warn('Error extracting ASIN:', e);
-      }
+      console.log('Extracting product details from Amazon page');
       
-      // Extract product title
-      let title = null;
-      try {
-        const titleElement = document.getElementById('productTitle');
-        title = titleElement ? titleElement.textContent.trim() : null;
-      } catch (e) {
-        console.warn('Error extracting title:', e);
-      }
+      // Get product title
+      const titleElement = document.querySelector('#productTitle') || 
+                         document.querySelector('.product-title') ||
+                         document.querySelector('.a-size-large.product-title-word-break');
       
-      // Extract price
-      let price = null;
-      try {
-        const priceSelectors = [
-          '.priceToPay .a-offscreen', 
-          '.a-price .a-offscreen',
-          '#priceblock_ourprice',
-          '#priceblock_dealprice',
-          '#price_inside_buybox'
-        ];
-        
-        for (const selector of priceSelectors) {
-          try {
-            const element = document.querySelector(selector);
-            if (element) {
-              const priceText = element.textContent.trim();
-              const priceValue = parseFloat(priceText.replace(/[^\d.]/g, ''));
-              if (!isNaN(priceValue) && priceValue > 0) {
-                price = priceValue;
-                break;
-              }
-            }
-          } catch (e) { /* continue to next selector */ }
+      // Get product price
+      const priceElement = document.querySelector('.a-price .a-offscreen') || 
+                          document.querySelector('[data-asin-price]') ||
+                          document.querySelector('.a-price') ||
+                          document.querySelector('.a-color-price');
+      
+      // Get product image
+      const imageElement = document.querySelector('#landingImage') || 
+                          document.querySelector('#imgBlkFront') ||
+                          document.querySelector('#main-image') ||
+                          document.querySelector('#imgTagWrapperId img');
+      
+      // Get ASIN (Amazon Standard Identification Number)
+      let asin = '';
+      // Try to extract from URL first
+      const asinMatch = window.location.pathname.match(/\/dp\/([A-Z0-9]{10})/);
+      if (asinMatch && asinMatch[1]) {
+        asin = asinMatch[1];
+      } else {
+        // Try to extract from a meta tag or data attribute
+        const asinElement = document.querySelector('[data-asin]');
+        if (asinElement && asinElement.dataset.asin) {
+          asin = asinElement.dataset.asin;
         }
-      } catch (e) {
-        console.warn('Error extracting price:', e);
       }
       
-      // Extract image
-      let imageUrl = null;
-      try {
-        const imgElement = document.getElementById('landingImage');
-        imageUrl = imgElement ? imgElement.src : null;
-      } catch (e) {
-        console.warn('Error extracting image:', e);
+      // Get product category
+      const categoryElement = document.querySelector('#wayfinding-breadcrumbs_feature_div') || 
+                             document.querySelector('#nav-subnav');
+      
+      // Get product brand
+      const brandElement = document.querySelector('#bylineInfo') || 
+                         document.querySelector('.a-color-secondary.a-size-base.prodDetAttrValue');
+      
+      // Get product rating
+      const ratingElement = document.querySelector('#acrPopover') || 
+                           document.querySelector('.a-icon-alt');
+      
+      // Get product reviews count
+      const reviewsElement = document.querySelector('#acrCustomerReviewText') || 
+                           document.querySelector('.a-size-base.a-color-secondary');
+      
+      // Parse and clean the extracted text
+      const title = titleElement ? titleElement.textContent.trim() : '';
+      
+      let price = '';
+      if (priceElement) {
+        const priceText = priceElement.textContent;
+        const priceMatch = priceText.match(/\$?([0-9]+(\.[0-9]+)?)/);
+        price = priceMatch ? priceMatch[1] : '';
       }
       
-      // Extract rating
-      let rating = null;
-      try {
-        const ratingText = document.querySelector('#averageCustomerReviews .a-icon-alt');
-        if (ratingText) {
-          const match = ratingText.textContent.match(/([0-9\.]+) out of/);
-          if (match) rating = parseFloat(match[1]);
+      const imageUrl = imageElement ? (imageElement.src || '') : '';
+      
+      let category = '';
+      if (categoryElement) {
+        const categoryText = categoryElement.textContent.trim();
+        // Extract the main category (usually the first item)
+        const categoryParts = categoryText.split('>');
+        if (categoryParts.length > 0) {
+          category = categoryParts[categoryParts.length - 1].trim();
+        } else {
+          category = categoryText;
         }
-      } catch (e) {
-        console.warn('Error extracting rating:', e);
       }
       
-      // Extract review count
-      let reviewCount = null;
-      try {
-        const reviewElement = document.getElementById('acrCustomerReviewText');
-        if (reviewElement) {
-          const match = reviewElement.textContent.match(/([0-9,]+)/);
-          if (match) reviewCount = parseInt(match[1].replace(/,/g, ''));
-        }
-      } catch (e) {
-        console.warn('Error extracting review count:', e);
+      const brand = brandElement ? brandElement.textContent.trim().replace('Brand: ', '').replace('Visit the ', '').replace(' Store', '') : '';
+      
+      let rating = '';
+      if (ratingElement) {
+        const ratingText = ratingElement.textContent;
+        const ratingMatch = ratingText.match(/([0-9\.]+)/);
+        rating = ratingMatch ? ratingMatch[1] : '';
       }
       
-      // Extract brand
-      let brand = null;
-      try {
-        const brandElement = document.querySelector('#bylineInfo');
-        if (brandElement) {
-          brand = brandElement.textContent
-                  .replace('Visit the ', '')
-                  .replace(' Store', '')
-                  .replace('Brand: ', '')
-                  .trim();
-        }
-      } catch (e) {
-        console.warn('Error extracting brand:', e);
+      let reviewsCount = '';
+      if (reviewsElement) {
+        const reviewsText = reviewsElement.textContent;
+        const reviewsMatch = reviewsText.match(/([0-9,]+)/);
+        reviewsCount = reviewsMatch ? reviewsMatch[1] : '';
       }
       
-      const productData = {
-        asin,
+      console.log('Extracted product details:', {
         title,
         price,
-        imageUrl,
-        rating,
-        reviewCount,
+        asin,
+        category,
         brand,
-        url: window.location.href
-      };
+        rating,
+        reviewsCount,
+        imageUrl
+      });
       
-      console.log('Extracted product data:', productData);
-      return productData;
-    } catch (e) {
-      console.error('Error in extractProductData:', e);
+      // Only return the product object if we have at least a title
+      if (title) {
+        return {
+          title,
+          price,
+          asin,
+          category,
+          brand,
+          rating,
+          reviewsCount,
+          imageUrl
+        };
+      } else {
+        console.error('Could not extract product title');
+        return null;
+      }
+    } catch (error) {
+      console.error('Error extracting product details:', error);
       return null;
     }
   }
-  
-  // Get recommendations from the API via the background script
-  async function getRecommendations(productData) {
-    try {
-      console.log('Requesting recommendations from background script...');
-      
-      // Using chrome.runtime.sendMessage directly from the content script
-      return new Promise((resolve, reject) => {
-        chrome.runtime.sendMessage({
-          action: 'getRecommendations',
-          productData: productData
-        }, function(response) {
-          if (chrome.runtime.lastError) {
-            console.error('Chrome runtime error:', chrome.runtime.lastError);
-            reject(new Error(chrome.runtime.lastError.message));
-            return;
+
+  // Fetch recommendations from background script
+  function fetchRecommendations(product) {
+    return new Promise((resolve, reject) => {
+      try {
+        // Show loading state
+        updateLoadingState(true, 'Fetching smart recommendations...');
+        
+        console.log('Fetching recommendations for product:', product);
+        
+        // Send request to background script
+        chrome.runtime.sendMessage(
+          {
+            action: 'getRecommendations',
+            product: product
+          },
+          response => {
+            // Hide loading state
+            updateLoadingState(false);
+            
+            if (response && response.success) {
+              console.log('Recommendations received:', response.data);
+              resolve(response.data);
+            } else {
+              console.error('Error fetching recommendations:', response.error);
+              
+              // If we have mock data available, use it as fallback
+              if (window.MOCK_RECOMMENDATIONS) {
+                console.log('Using mock recommendations as fallback');
+                resolve({
+                  recommendations: window.MOCK_RECOMMENDATIONS,
+                  source: 'Mock Data (Fallback)',
+                  usingMockData: true
+                });
+              } else {
+                reject(new Error(response.error || 'Unknown error'));
+              }
+            }
           }
-          
-          // Check if we got a valid response with recommendations
-          if (response && response.success && response.data && 
-              response.data.recommendations && 
-              Array.isArray(response.data.recommendations)) {
-            console.log('Received recommendations from background script:', response.data);
-            resolve({ 
-              recommendations: response.data.recommendations,
-              isReal: !response.mock, // Check if this is mock data
-              isMock: response.mock || response.data.source === 'mock' // Check both flags
-            });
-          } else {
-            console.log('No valid recommendations from background script:', response);
-            resolve({ 
-              recommendations: [], 
-              isReal: false,
-              error: response?.error || 'Failed to get real recommendations'
-            });
-          }
-        });
-      });
-    } catch (e) {
-      console.error('Error in getRecommendations:', e);
-      return { 
-        recommendations: [],
-        isReal: false,
-        error: e.message 
-      };
-    }
+        );
+      } catch (error) {
+        // Hide loading state
+        updateLoadingState(false);
+        
+        console.error('Error in fetchRecommendations:', error);
+        reject(error);
+      }
+    });
   }
 
   // Test the API connection and show diagnostic information
@@ -740,7 +833,7 @@ ${typeof result.response === 'object' ? JSON.stringify(result.response, null, 2)
       }
       
       // Extract product data
-      const productData = extractProductData();
+      const productData = extractProductDetails();
       if (!productData || !productData.title) {
         console.log('Could not extract product data, aborting panel creation');
         return;
@@ -857,7 +950,7 @@ ${typeof result.response === 'object' ? JSON.stringify(result.response, null, 2)
       console.log('Amazon panel created successfully');
       
       // Fetch and display recommendations
-      getRecommendations(productData)
+      fetchRecommendations(productData)
         .then(result => {
           updatePanelContent(content, productData, result);
         })

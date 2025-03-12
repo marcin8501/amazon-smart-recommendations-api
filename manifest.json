@@ -1,39 +1,44 @@
 {
   "manifest_version": 3,
   "name": "Amazon Smart Recommendations",
-  "version": "3.0.0",
-  "description": "Get smart product recommendations while shopping on Amazon",
+  "version": "3.1.0",
+  "description": "Get AI-powered smart product recommendations while shopping on Amazon using Google Gemini.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
   "permissions": [
-    "activeTab",
-    "storage"
+    "storage",
+    "activeTab"
   ],
   "host_permissions": [
-    "*://*.amazon.com/*",
-    "https://amazon-smart-recommendations-nxqwcy3cb-marcin8501s-projects.vercel.app/*",
-    "https://cors-anywhere.herokuapp.com/*",
-    "https://api.allorigins.win/*",
-    "https://cors-proxy.htmldriven.com/*",
-    "https://corsproxy.io/*"
+    "https://*.amazon.com/*",
+    "https://amazon-smart-recommendations-api.vercel.app/*",
+    "https://generativelanguage.googleapis.com/*"
   ],
   "background": {
     "service_worker": "background.js"
   },
   "content_scripts": [
     {
-      "matches": ["*://*.amazon.com/*"],
+      "matches": ["https://*.amazon.com/*"],
       "js": ["contentScript.js"],
-      "run_at": "document_end"
+      "css": ["style.css"]
     }
   ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
   "web_accessible_resources": [
     {
-      "resources": ["amazonPanel.js", "api-test.html"],
-      "matches": ["*://*.amazon.com/*"]
+      "resources": ["icons/*", "data/*"],
+      "matches": ["https://*.amazon.com/*"]
     }
-  ],
-  "icons": {
-    "16": "icons/icon16.png",
-    "48": "icons/icon48.png",
-    "128": "icons/icon128.png"
-  }
+  ]
 } 

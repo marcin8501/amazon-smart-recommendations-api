@@ -1,35 +1,89 @@
-// Amazon Smart Recommendations Popup Logic v2.0.0
+// Amazon Smart Recommendations - Popup Script
+// Handles the extension popup UI and settings management
 
 document.addEventListener('DOMContentLoaded', function() {
-  // Get UI elements
-  const statusElement = document.querySelector('.status');
+  // DOM elements
+  const apiKeyInput = document.getElementById('apiKey');
+  const maxRecommendationsSelect = document.getElementById('maxRecommendations');
+  const prioritySelect = document.getElementById('priority');
+  const autoShowCheckbox = document.getElementById('autoShow');
+  const themeSelect = document.getElementById('theme');
+  const clearCacheButton = document.getElementById('clearCache');
+  const saveSettingsButton = document.getElementById('saveSettings');
+  const statusElement = document.getElementById('status');
   
-  // Check if we're on an Amazon page
-  chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-    if (tabs[0] && tabs[0].url && tabs[0].url.includes('amazon.com')) {
-      // Check if it's a product page
-      const isProductPage = tabs[0].url.includes('/dp/') || 
-                           tabs[0].url.includes('/gp/product/');
-      
-      if (isProductPage) {
-        statusElement.innerHTML = 'You\'re on an Amazon product page!<br>The recommendations panel should be visible on the right side.';
-        statusElement.className = 'status active';
+  // Load current settings when popup opens
+  loadSettings();
+  
+  // Add event listeners for buttons
+  saveSettingsButton.addEventListener('click', saveSettings);
+  clearCacheButton.addEventListener('click', clearCache);
+  
+  // Load settings from storage
+  function loadSettings() {
+    chrome.runtime.sendMessage({ action: 'getSettings' }, function(response) {
+      if (response && response.success) {
+        const settings = response.settings;
+        
+        // Update UI with current settings
+        apiKeyInput.value = settings.apiKey || '';
+        maxRecommendationsSelect.value = settings.maxRecommendations || '3';
+        prioritySelect.value = settings.priority || 'price';
+        autoShowCheckbox.checked = settings.autoShow !== false; // Default to true if undefined
+        themeSelect.value = settings.theme || 'light';
+        
+        console.log('Settings loaded:', settings);
       } else {
-        statusElement.innerHTML = 'You\'re on Amazon, but not on a product page.<br>Visit a product page to see recommendations.';
-        statusElement.className = 'status';
+        showStatus('Could not load settings', false);
       }
-    } else {
-      statusElement.innerHTML = 'You\'re not on Amazon right now.<br>Visit any Amazon product page to see recommendations.';
-      statusElement.className = 'status';
-    }
-  });
+    });
+  }
   
-  // Listen for clicks on links
-  document.addEventListener('click', function(e) {
-    if (e.target.tagName === 'A') {
-      // Open links in new tabs
-      chrome.tabs.create({url: e.target.href});
-      return false;
-    }
-  });
+  // Save settings to storage
+  function saveSettings() {
+    // Collect settings from form
+    const settings = {
+      apiKey: apiKeyInput.value.trim(),
+      maxRecommendations: parseInt(maxRecommendationsSelect.value, 10),
+      priority: prioritySelect.value,
+      autoShow: autoShowCheckbox.checked,
+      theme: themeSelect.value
+    };
+    
+    // Send to background script to save
+    chrome.runtime.sendMessage({ 
+      action: 'saveSettings',
+      settings: settings
+    }, function(response) {
+      if (response && response.success) {
+        showStatus('Settings saved successfully!', true);
+        console.log('Settings saved:', settings);
+      } else {
+        showStatus('Error saving settings', false);
+      }
+    });
+  }
+  
+  // Clear recommendations cache
+  function clearCache() {
+    chrome.runtime.sendMessage({ action: 'clearCache' }, function(response) {
+      if (response && response.success) {
+        showStatus('Cache cleared successfully!', true);
+      } else {
+        showStatus('Error clearing cache', false);
+      }
+    });
+  }
+  
+  // Show status message with optional success state
+  function showStatus(message, isSuccess) {
+    statusElement.textContent = message;
+    statusElement.className = 'status ' + (isSuccess ? 'success' : 'error');
+    
+    // Clear status after 3 seconds
+    setTimeout(function() {
+      statusElement.textContent = '';
+      statusElement.className = 'status';
+    }, 3000);
+  }
 }); 

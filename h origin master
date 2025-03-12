@@ -1,0 +1,5 @@
+[33mcommit a641495d127d555d3e80300935b0e471219fcc0e[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmaster[m[33m)[m
+Author: marcin8501 <107476363+marcin8501@users.noreply.github.com>
+Date:   Wed Mar 12 11:21:45 2025 +0000
+
+    Significantly improved Perplexity prompt with explicit examples and better formatting to get real product names

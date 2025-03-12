@@ -303,32 +303,37 @@ const createPrompt = (product) => {
   const category = product.category || 'General';
   const categoryConfig = getCategoryConfig(category);
   
-  // Create a more specific system prompt that asks for real, searchable products
-  const systemPrompt = `You are a knowledgeable expert on Amazon products. For the given product, recommend 3 REAL, SPECIFIC alternative products that are ACTUALLY SOLD ON AMAZON RIGHT NOW. Products must include:
-  - EXACT product names as they appear on Amazon (not generic descriptions)
-  - Specific model numbers where applicable
-  - Current approximate price on Amazon
-  - Manufacturer/brand name
+  // Create a more specific system prompt with examples and formatting instructions
+  const systemPrompt = `You are a knowledgeable expert on consumer products. For the given product, you must recommend 3 REAL, SPECIFIC alternative products that can be purchased on Amazon RIGHT NOW.
+
+EXTREMELY IMPORTANT INSTRUCTIONS:
+1. Provide recommendations for real, purchasable products that are available on Amazon.
+2. Do NOT recommend generic categories or placeholder names like "Premium Alternative" or "Best Value Option".
+3. Each recommendation MUST include specific brand and model name (e.g., "Sony WH-1000XM4", "Anker Soundcore Q30").
+4. Categorize alternatives as: "Better Value Alternative", "Premium Alternative", and "Most Popular Alternative".
+5. Format each recommendation exactly as shown in the example below.
+
+EXAMPLE OUTPUT FORMAT:
+**Better Value Alternative:** Anker Soundcore Q30 - $59.99
+* Why it's better: More affordable with 90% of the features of the original product.
+
+**Premium Alternative:** Sony WH-1000XM4 - $299.99
+* Why it's better: Superior noise cancellation and battery life.
+
+**Most Popular Alternative:** Jabra Elite 85h - $179.99
+* Why it's better: Excellent user reviews and a comfortable design.
+
+Your recommendations MUST follow this exact format with specific product names, not generic descriptions. Users will search for these exact product names on Amazon.`;
   
-Structure your recommendations like this:
-1. Better Value Alternative: [SPECIFIC PRODUCT NAME including brand and model] - $XX.XX
-   Why it's better: [1-2 concrete reasons]
-
-2. Premium Alternative: [SPECIFIC PRODUCT NAME including brand and model] - $XX.XX
-   Why it's better: [1-2 concrete reasons]
-
-3. Most Popular Alternative: [SPECIFIC PRODUCT NAME including brand and model] - $XX.XX
-   Why it's better: [1-2 concrete reasons]
-
-EXTREMELY IMPORTANT: Do NOT give generic responses like "Premium Alternative" or "Best Value Option" as product names. Each recommendation must have a REAL, SPECIFIC product name that someone could search for and find on Amazon. For example, "Sony WH-1000XM4 Wireless Noise-Canceling Headphones" not "Premium Noise-Canceling Headphones".`;
-  
-  // Create detailed user prompt with all available product information
+  // Create detailed user prompt with specific task definition
   const userPrompt = `Product: ${product.title || 'Unknown'}
 Price: ${product.price || 'Unknown'}
 Brand: ${product.brand || 'Unknown'}
 Category: ${category}
 
-Provide 3 REAL alternative products that are actually sold on Amazon with their EXACT product names as they appear on Amazon. Include specific model numbers, current prices, and 1-2 concrete reasons why each is a good alternative. Users will search for these exact product names on Amazon, so they MUST be real products with complete and accurate names.`;
+Task: Recommend 3 real product alternatives for the product above that are currently sold on Amazon.
+
+Output 3 REAL PRODUCT alternatives with their EXACT names as they appear on Amazon (not generic descriptions). Include brand names, model numbers, prices, and specific reasons why each is a good alternative. Format exactly as shown in the system instructions.`;
   
   return {
     systemPrompt,
@@ -715,10 +720,31 @@ function parseRecommendationsFromContent(content, product) {
 
 // Helper function to extract product title
 function extractProductTitle(text) {
-  // First, try to find a complete product name with price pattern
+  // Look for the bolded pattern from our new output format
+  const boldPatterns = [
+    /\*\*Better Value Alternative:\*\*\s*(.*?)\s*-\s*\$/i,
+    /\*\*Premium Alternative:\*\*\s*(.*?)\s*-\s*\$/i, 
+    /\*\*Most Popular Alternative:\*\*\s*(.*?)\s*-\s*\$/i,
+    /\*\*(.*?)\*\*\s*-\s*\$/i, // Generic bold pattern followed by price
+    /\*\*(.*?):\*\*\s*(.*?)\s*-\s*\$/i // Bold category followed by product name and price
+  ];
+  
+  // Check for bold format patterns first
+  for (const pattern of boldPatterns) {
+    const match = text.match(pattern);
+    if (match) {
+      // If pattern includes the category label, use the second capture group (product name)
+      const title = match[2] || match[1];
+      if (title && title.trim().length > 3) {
+        console.log("Extracted title from bold format:", title.trim());
+        return title.trim();
+      }
+    }
+  }
+  
+  // First, try to find a complete product name with price pattern (fallback to previous patterns)
   const fullProductPatterns = [
     /\d+\.\s*(.*?)(?:\s*-\s*\$|\s*:\s*\$|\s*\(\$|\s+\$)/i,
-    /\*\*(.*?)\*\*\s*-\s*\$/i,
     /Better Value Alternative:\s*(.*?)(?:\s*-\s*\$|\s+\$)/i,
     /Premium Alternative:\s*(.*?)(?:\s*-\s*\$|\s+\$)/i,
     /Most Popular Alternative:\s*(.*?)(?:\s*-\s*\$|\s+\$)/i,
@@ -737,7 +763,6 @@ function extractProductTitle(text) {
   // Fallback to more general patterns if specific ones don't match
   const patterns = [
     /\d+\.\s*([^:]+):/,
-    /\*\*([^:*]+)\*\*/,
     /^([^:,]+):/m,
     /^(.+?)\s*\(/m,
     /^(.+?)\s*-/m,
@@ -776,11 +801,14 @@ function extractPrice(text) {
 
 // Helper function to extract reason
 function extractReason(text) {
-  // Look for reason patterns
+  // Look for reason patterns based on the new format
   const reasonPatterns = [
-    /why it's better:?\s*([^.]+)/i,
-    /key features:?\s*([^.]+)/i,
-    /benefits:?\s*([^.]+)/i
+    /\* Why it's better:\s*([^.]+)/i,
+    /\* Why it's better:\s*(.*?)(?=\n|$)/i,
+    /Why it's better:\s*([^.]+)/i,
+    /Why it's better:\s*(.*?)(?=\n|$)/i,
+    /key features?:\s*([^.]+)/i,
+    /benefits?:\s*([^.]+)/i
   ];
   
   for (const pattern of reasonPatterns) {
